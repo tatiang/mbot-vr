@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+.vite/
+
+# Build info from TypeScript project references
+*.tsbuildinfo
+
+# Packaged deliverable zips - built on demand, not source
+*.zip
+
+# Vercel local project link/config (machine-specific, not needed in git)
+.vercel

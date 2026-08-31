@@ -1,0 +1,30 @@
+{
+  "name": "mbot-vr",
+  "private": true,
+  "version": "1.2.0",
+  "description": "mBot VR - a browser-based block programming and simulation environment for the Makeblock mBot.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --force"
+  },
+  "dependencies": {
+    "blockly": "^11.2.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^5.6.3",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  }
+}
