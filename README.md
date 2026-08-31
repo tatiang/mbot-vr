@@ -8,6 +8,12 @@ every sensor value visible on screen while the program runs.
 
 No installation, no accounts, no backend. Open the page and start programming.
 
+**For students:** **<https://mbot-vr.vercel.app>** - no sign-in, just open the
+link. Works best in a **current version of Chrome**, on a Chromebook or a
+laptop. Each student's programs are saved **only in their own browser**
+(nothing is uploaded anywhere) - see
+[Student data and storage](#student-data-and-storage) below.
+
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
 │ mBot VR   Playground ▾   Project [ My mBot program ]   New Save Open  ?   │
@@ -55,6 +61,74 @@ into `dist/`, which can be served from any web server, a subfolder, or even a US
 stick - the build uses relative asset paths.
 
 Requires Node.js 20.19+ (Vite 7). Tested on Node 22.
+
+To try the production build locally before shipping it (catches anything
+`vite dev`'s dev-server behaviour might hide):
+
+```bash
+npm run build
+npm run preview
+```
+
+`preview` serves the same static `dist/` output a real deployment serves, on
+<http://localhost:4173>.
+
+---
+
+## Deployment
+
+mBot VR is a fully static site - no server, no environment variables, no
+secrets. It is deployed on **Vercel**, built straight from this repository.
+
+| | |
+| --- | --- |
+| **Student URL** | <https://mbot-vr.vercel.app> |
+| **Vercel project** | `tatiang/mbot-vr` ([dashboard](https://vercel.com/tatiang/mbot-vr)) |
+| **GitHub repo** | [`tatiang/mbot-vr`](https://github.com/tatiang/mbot-vr) (public) |
+| **Framework preset** | Vite (auto-detected: build `npm run build`, output `dist/`) |
+| **Auto-deploy** | Enabled - every push to `main` redeploys `https://mbot-vr.vercel.app` automatically |
+| **Deployment protection** | Off - the production URL is open to anyone, no Vercel login required |
+
+**To ship a change:** commit and push to `main`. Vercel builds and redeploys
+within a minute or two; no manual step needed.
+
+**To deploy without waiting on a push** (e.g. testing from a branch), with the
+[Vercel CLI](https://vercel.com/docs/cli) installed and run once from the repo
+root to link it (`npx vercel link`, already done on this machine):
+
+```bash
+npx vercel --prod
+```
+
+**To roll back**, use the Vercel dashboard's Deployments tab and "Promote to
+Production" on any earlier build - every deployment is kept, not just the
+current one.
+
+**If the GitHub connection is ever lost or moved to a new machine/account**,
+reconnect it from the project's Git settings
+(<https://vercel.com/tatiang/mbot-vr/settings/git>) or run
+`npx vercel git connect` after logging in with `npx vercel login` - this needs
+a one-time authorization of the Vercel GitHub App on `tatiang/mbot-vr`, done
+once in a browser, not something the CLI can do unattended.
+
+### Student data and storage
+
+No backend exists to send student work to. Everything a student builds -
+block programs, saved projects, autosave - lives in **`localStorage` in their
+own browser**, scoped to `mbot-vr.vercel.app`. Consequences worth knowing:
+
+- Nothing a student writes is visible to the teacher, to Vercel, or to
+  anyone else unless the student explicitly exports/shares the file.
+- A student's work does not follow them to a different computer or browser
+  profile - if they might switch machines, have them **Export** (or **Save**,
+  in Chrome/Edge) their project to a file first.
+- Clearing browser data, using a private/incognito window, or a Chromebook
+  policy that wipes local storage on logout will erase unsaved local work.
+  This is a real risk on managed school Chromebooks - export anything that
+  matters.
+- The app adds no analytics, trackers, ads, or third-party services of any
+  kind - see [Known limitations](#known-limitations) and the network
+  requests a browser dev tools panel shows for confirmation.
 
 ---
 

@@ -12,3 +12,7 @@ dist/
 
 # Vercel local project link/config (machine-specific, not needed in git)
 .vercel
+.env*
+
+# Claude Code session-local state, not project source
+.claude/scheduled_tasks.lock
