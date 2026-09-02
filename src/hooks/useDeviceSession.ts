@@ -32,6 +32,24 @@ export interface DeviceSessionController {
   getSession: () => DeviceSession | null;
 }
 
+/**
+ * Arduino Uno-compatible boards - the mCore included - auto-reset when a serial
+ * connection opens: the classic DTR-line-through-a-100nF-capacitor circuit that also
+ * makes the Arduino IDE's own Serial Monitor reset a board on open. Web Serial's
+ * `port.open()` goes through the same OS-level handshake, so it very likely triggers
+ * the same reset here. This surfaced as a real, reproducible failure during hardware
+ * testing: `identify()` kept timing out even after the reply-parsing bug (see
+ * `docs/hardware-bridge-plan.md`) was fixed, consistent with probing a board that was
+ * still rebooting. This grace period lets the reset and the bootloader's own startup
+ * delay finish before the first probe goes out, rather than burning identify's first
+ * attempt on a board that cannot answer yet.
+ */
+const RESET_SETTLE_MS = 2000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function useDeviceSession(log: DiagnosticLog): DeviceSessionController {
   const capabilities = useRef(detectCapabilities()).current;
   const [status, setStatus] = useState<ConnectionStatus>(
@@ -52,6 +70,7 @@ export function useDeviceSession(log: DiagnosticLog): DeviceSessionController {
         const port = await requestSerialPort(kind, options);
         setStatus({ phase: 'opening', link: kind });
         const link = await openSerialLink(port);
+        await wait(RESET_SETTLE_MS); // let a likely auto-reset finish - see the note above
         const session = new DeviceSession(link, kind, {
           onStatusChange: setStatus,
           onLog: (event) => log.log(event),
