@@ -545,6 +545,10 @@ device code from being downloaded.
 - **What doesn't exist yet:** untethered/flashed programs, an Arduino-export fallback
   for Safari/Firefox, and real-hardware validation of sensor reads and Tier 2 Player
   firmware.
+- **Firmware updates:** mBot VR cannot flash firmware from the web app yet. If a robot
+  does not answer because it was last used with mBlock Upload mode, restore Makeblock's
+  factory firmware in mBlock 5: Setting -> Firmware Update -> Factory Firmware ->
+  Update.
 
 Full design rationale, the safety reasoning behind the stop mechanism, and exactly
 what remains open: [`docs/hardware-bridge-plan.md`](./docs/hardware-bridge-plan.md).
