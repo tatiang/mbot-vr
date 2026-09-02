@@ -39,29 +39,28 @@ beforeEach(() => {
 });
 
 describe('isHardwareFeatureEnabled', () => {
-  it('is off by default', () => {
-    expect(isHardwareFeatureEnabled()).toBe(false);
+  it('is on by default', () => {
+    expect(isHardwareFeatureEnabled()).toBe(true);
   });
 
-  it('turns on and persists when ?hardware=1 is present', () => {
+  it('turns on and clears a previous opt-out when ?hardware=1 is present', () => {
+    storage.setItem('mbotvr.hardware.enabled', '0');
     setLocation('?hardware=1');
     expect(isHardwareFeatureEnabled()).toBe(true);
-    expect(storage.getItem('mbotvr.hardware.enabled')).toBe('1');
+    expect(storage.getItem('mbotvr.hardware.enabled')).toBeNull();
   });
 
-  it('stays on for a later visit with no query param, once persisted', () => {
-    setLocation('?hardware=1');
+  it('stays off for a later visit with no query param, once opted out', () => {
+    setLocation('?hardware=0');
     isHardwareFeatureEnabled();
     setLocation('');
-    expect(isHardwareFeatureEnabled()).toBe(true);
+    expect(isHardwareFeatureEnabled()).toBe(false);
   });
 
-  it('turns off and clears storage when ?hardware=0 is present', () => {
-    setLocation('?hardware=1');
-    isHardwareFeatureEnabled();
+  it('turns off and stores the opt-out when ?hardware=0 is present', () => {
     setLocation('?hardware=0');
     expect(isHardwareFeatureEnabled()).toBe(false);
-    expect(storage.getItem('mbotvr.hardware.enabled')).toBeNull();
+    expect(storage.getItem('mbotvr.hardware.enabled')).toBe('0');
   });
 
   it('never throws when storage is unavailable', () => {
@@ -73,7 +72,7 @@ describe('isHardwareFeatureEnabled', () => {
     });
     try {
       expect(() => isHardwareFeatureEnabled()).not.toThrow();
-      expect(isHardwareFeatureEnabled()).toBe(false);
+      expect(isHardwareFeatureEnabled()).toBe(true);
     } finally {
       Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: storage });
     }

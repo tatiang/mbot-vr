@@ -837,9 +837,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ==========================================================================
    Physical robot panel (connect, preflight, diagnostics)
-   See docs/hardware-bridge-plan.md. Off by default behind a feature flag, so
-   these rules are inert dead weight for a student who never turns it on -
-   deliberately kept small for that reason.
+   See docs/hardware-bridge-plan.md. The hardware surface is default-on now, but these
+   rules stay deliberately small because the whole section can still be disabled with
+   ?hardware=0.
    ========================================================================== */
 
 .device-panel {
