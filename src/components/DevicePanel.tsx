@@ -12,9 +12,14 @@ interface Props {
   onDisconnect: () => void;
   onRun: () => void;
   onStop: () => void;
+  onStoreProgram: () => void;
+  onClearStoredProgram: () => void;
   running: boolean;
   runDisabled: boolean;
   runDisabledReason?: string;
+  storeDisabled: boolean;
+  clearDisabled: boolean;
+  storeDisabledReason?: string;
 }
 
 /**
@@ -34,9 +39,14 @@ export function DevicePanel({
   onDisconnect,
   onRun,
   onStop,
+  onStoreProgram,
+  onClearStoredProgram,
   running,
   runDisabled,
   runDisabledReason,
+  storeDisabled,
+  clearDisabled,
+  storeDisabledReason,
 }: Props) {
   switch (status.phase) {
     case 'unsupported':
@@ -136,6 +146,21 @@ export function DevicePanel({
             </button>
           </div>
           {runDisabled && runDisabledReason && <p className="hint-text" style={{ textAlign: 'left' }}>{runDisabledReason}</p>}
+          <div className="device-panel__storage">
+            <button type="button" className="btn btn--primary" onClick={onStoreProgram} disabled={storeDisabled}>
+              Put this on my robot
+            </button>
+            <button type="button" className="btn btn--ghost" onClick={onClearStoredProgram} disabled={clearDisabled}>
+              Clear my robot's program
+            </button>
+          </div>
+          {status.phase === 'sending' && (
+            <div className="device-panel__progress" aria-label="Program transfer progress">
+              <div style={{ width: `${Math.round((status.sentBytes / Math.max(1, status.totalBytes)) * 100)}%` }} />
+            </div>
+          )}
+          {status.phase === 'verifying' && <p className="device-panel__status">Checking the program on the robot…</p>}
+          {storeDisabledReason && <p className="hint-text" style={{ textAlign: 'left' }}>{storeDisabledReason}</p>}
           <button type="button" className="btn btn--sm btn--ghost" onClick={onDisconnect} disabled={running}>
             Done with my robot
           </button>

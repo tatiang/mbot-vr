@@ -3,9 +3,11 @@ import {
   DeviceId,
   FrameParser,
   LedIndex,
+  PlayerCommand,
   decodeString,
   encodeGet,
   encodeMotorRun,
+  encodePlayerGet,
   encodeReset,
   encodeRgbLed,
   encodeRun,
@@ -27,6 +29,8 @@ const IDENTIFY_ATTEMPTS = 3;
 const IDENTIFY_RETRY_GAP_MS = 400;
 const READ_TIMEOUT_MS = 400;
 const READ_RETRIES = 2;
+const PLAYER_TRANSFER_TIMEOUT_MS = 15000;
+const PLAYER_CHUNK_BYTES = 32;
 
 export interface DeviceSessionCallbacks {
   onStatusChange?: (status: ConnectionStatus) => void;
@@ -46,6 +50,18 @@ function hexPreview(bytes: Uint8Array): string {
   const hex = Array.from(shown, (b) => b.toString(16).padStart(2, '0')).join(' ');
   const suffix = bytes.length > HEX_PREVIEW_MAX_BYTES ? ` … (+${bytes.length - HEX_PREVIEW_MAX_BYTES} more bytes)` : '';
   return `[${bytes.length}B] ${hex}${suffix}`;
+}
+
+function isPlayerFirmwareVersion(version: string | null): boolean {
+  return Boolean(version && /mbot\s*vr|mbot-vr|player/i.test(version));
+}
+
+function lo(value: number): number {
+  return value & 0xff;
+}
+
+function hi(value: number): number {
+  return (value >> 8) & 0xff;
 }
 
 /**
@@ -124,6 +140,8 @@ export class DeviceSession {
         this.profile = {
           ...UNKNOWN_DEVICE_PROFILE,
           firmwareVersion: version,
+          protocolVersion: isPlayerFirmwareVersion(version) ? 'player-bytecode-v1' : null,
+          supportsOnRobotPrograms: isPlayerFirmwareVersion(version),
           ultrasonicPort: DEFAULT_ULTRASONIC_PORT,
           lineFollowerPort: DEFAULT_LINE_FOLLOWER_PORT,
         };
@@ -261,6 +279,59 @@ export class DeviceSession {
     return this.requestWithRetries(DeviceId.LINE_FOLLOWER, [port]);
   }
 
+  // --- Player firmware EEPROM program storage --------------------------------------
+
+  async writeStoredProgram(
+    bytes: Uint8Array,
+    checksum: number,
+    onProgress?: (sentBytes: number, totalBytes: number) => void,
+  ): Promise<void> {
+    this.requirePlayerFirmware();
+    const deadline = performance.now() + PLAYER_TRANSFER_TIMEOUT_MS;
+    const remainingMs = () => {
+      const remaining = Math.floor(deadline - performance.now());
+      if (remaining <= 0) throw new DeviceError('ERR_SEND_TIMEOUT', 'Player firmware transfer timed out.');
+      return remaining;
+    };
+    this.setStatus({ phase: 'sending', link: this.linkKind, profile: this.profile, sentBytes: 0, totalBytes: bytes.length });
+    await this.expectPlayerOk(
+      PlayerCommand.BEGIN_PROGRAM_WRITE,
+      [lo(bytes.length), hi(bytes.length), lo(checksum), hi(checksum)],
+      remainingMs(),
+      'ERR_SEND_TIMEOUT',
+    );
+
+    for (let offset = 0; offset < bytes.length; offset += PLAYER_CHUNK_BYTES) {
+      const chunk = bytes.subarray(offset, offset + PLAYER_CHUNK_BYTES);
+      await this.expectPlayerOk(
+        PlayerCommand.WRITE_PROGRAM_CHUNK,
+        [lo(offset), hi(offset), ...Array.from(chunk)],
+        remainingMs(),
+        'ERR_SEND_TIMEOUT',
+      );
+      const sentBytes = Math.min(bytes.length, offset + chunk.length);
+      onProgress?.(sentBytes, bytes.length);
+      this.setStatus({ phase: 'sending', link: this.linkKind, profile: this.profile, sentBytes, totalBytes: bytes.length });
+    }
+
+    this.setStatus({ phase: 'verifying', link: this.linkKind, profile: this.profile });
+    await this.expectPlayerOk(
+      PlayerCommand.VERIFY_PROGRAM,
+      [lo(bytes.length), hi(bytes.length), lo(checksum), hi(checksum)],
+      remainingMs(),
+      'ERR_SEND_TIMEOUT',
+    );
+    await this.expectPlayerOk(PlayerCommand.COMMIT_PROGRAM, [], remainingMs(), 'ERR_SEND_TIMEOUT');
+    this.setStatus({ phase: 'ready', link: this.linkKind, profile: this.profile });
+  }
+
+  async clearStoredProgram(): Promise<void> {
+    this.requirePlayerFirmware();
+    this.setStatus({ phase: 'sending', link: this.linkKind, profile: this.profile, sentBytes: 0, totalBytes: 1 });
+    await this.expectPlayerOk(PlayerCommand.SET_BOOT_IDLE, [1], PLAYER_TRANSFER_TIMEOUT_MS, 'ERR_SEND_TIMEOUT');
+    this.setStatus({ phase: 'ready', link: this.linkKind, profile: this.profile });
+  }
+
   // --- stop escalation primitives (see StopController.ts) ----------------------------
 
   /** A cheap, side-effect-free GET used as a liveness check. Never throws; returns false on timeout. */
@@ -323,6 +394,49 @@ export class DeviceSession {
         reject(err instanceof DeviceError ? err : new DeviceError('ERR_LINK_LOST', 'Write failed.', err));
       });
     });
+  }
+
+  private async requestPlayer(
+    command: number,
+    params: number[],
+    timeoutMs: number,
+    timeoutCode = 'ERR_NO_REPLY',
+  ): Promise<Uint8Array> {
+    const idx = this.nextIdx();
+    const frame = encodePlayerGet(idx, command, params);
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(idx);
+        reject(new DeviceError(timeoutCode, 'No Player firmware reply within timeout.'));
+      }, timeoutMs);
+      this.pending.set(idx, {
+        resolve: (payload) => {
+          clearTimeout(timer);
+          resolve(payload);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+      this.link.write(frame).catch((err) => {
+        clearTimeout(timer);
+        this.pending.delete(idx);
+        reject(err instanceof DeviceError ? err : new DeviceError('ERR_LINK_LOST', 'Write failed.', err));
+      });
+    });
+  }
+
+  private async expectPlayerOk(command: number, params: number[], timeoutMs: number, timeoutCode?: string): Promise<void> {
+    const payload = await this.requestPlayer(command, params, timeoutMs, timeoutCode);
+    if (payload[0] !== 1) throw new DeviceError('ERR_VERIFY_FAILED', 'Player firmware rejected the command.');
+  }
+
+  private requirePlayerFirmware(): void {
+    if (!this.identityConfirmed) throw new DeviceError('ERR_IDENTITY_REJECTED', 'Robot identity is not confirmed.');
+    if (!this.profile.supportsOnRobotPrograms) {
+      throw new DeviceError('ERR_FIRMWARE_UNKNOWN', 'On-robot programs require mBot VR Player firmware.');
+    }
   }
 
   private async requestWithRetries(deviceId: number, params: number[]): Promise<Uint8Array> {

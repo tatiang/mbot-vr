@@ -1026,14 +1026,60 @@ motor port wiring assumption (`MotorPort`'s values are now confirmed correct aga
 `mbot.js`, but whether *this* fleet's ultrasonic/line-follower modules are physically on
 the assumed default ports 3 and 2 - U3/U7 - has not been tested).
 
+### Sixth round: browser-side Player storage plumbing, no firmware yet
+
+The first Tier 2 implementation slice is now in the browser, but it has **not** been
+verified against real Player firmware because that firmware does not exist in this repo
+yet.
+
+- **Bytecode compiler** (`src/device/bytecode.ts`) - Blockly workspaces now compile to a
+  compact, versioned Player bytecode image with an `MBVR` magic header, bytecode format
+  version, instruction length, and Fletcher-style checksum. The instruction vocabulary
+  intentionally mirrors the existing `RobotCall` surface rather than inventing a second
+  semantic model: motors, stop, waits, LEDs, display, timer, ultrasonic, line follower,
+  boolean/math operators, conditionals, fixed repeats, forever loops, and wait/repeat
+  until. The reserved EEPROM program slot is capped at 896 bytes, leaving 128 bytes of
+  the ATmega328P's 1 KB EEPROM for the halt flag, nickname/profile data, versioning, and
+  future metadata.
+- **On-robot preflight** (`src/device/preflight.ts`) - the existing hardware
+  compatibility pass gained an opt-in stricter mode for "Put this on my robot." Tethered
+  running is unchanged, but persistent storage now blocks unsupported bytecode constructs
+  and oversized programs before any serial bytes are sent. This is the real EEPROM-size
+  preflight the plan called non-optional.
+- **Player serial protocol hooks** (`src/device/MakeblockProtocol.ts`,
+  `src/device/DeviceSession.ts`) - the browser now reserves a custom Player device id
+  and indexed GET subcommands for begin-write, chunk-write, verify, commit, and
+  boot-idle halt flag writes. These use correlated replies, unlike factory-firmware RUN
+  acknowledgements, so the UI can truthfully say "Program is on your robot" only after
+  verification succeeds. Factory firmware remains unaffected and is detected as not
+  supporting stored programs.
+- **UI** (`src/components/DevicePanel.tsx`, `src/components/DeviceSection.tsx`) - a
+  connected Player robot gets separate **Run on robot**, **Put this on my robot**, and
+  **Clear my robot's program** controls. Storage is disabled over Bluetooth, on factory
+  firmware, while a tethered run is active, and whenever preflight has a blocking issue.
+  Clearing the stored program is independent of the current workspace's validity because
+  it only writes the Player firmware's boot-idle halt flag.
+
+Tests now cover the bytecode image format, all starter programs fitting in the reserved
+slot, bytecode-specific preflight failures, Player command frame encoding, chunked
+write/verify/commit sequencing, clearing the boot-idle flag, and rejection on factory
+firmware. `npm run typecheck`, `npm run test`, and `npm run build` pass locally.
+
+**Still blocked by decisions:** actual Player firmware source/binary and the Web Serial
+STK500 flashing UI remain intentionally unshipped. The firmware licensing decision in
+§18.3 and the teacher-only flashing access decision in §18.4 must be made before this
+repo contains an Arduino sketch or exposes a flashing workflow. Because no firmware
+exists yet, this round does **not** prove untethered execution, EEPROM writes on real
+hardware, watchdog timing, or power-cycle behaviour.
+
 ### What is explicitly not built
 
-- **Player firmware, EEPROM program storage, the flash-once workflow (Tier 2 /
-  Phase 5).** No Arduino sketch was written and no STK500 flashing code exists. This
-  needs an Arduino build environment and real hardware to validate the watchdog timing,
-  neither of which this session had. "Clear my robot's program" is correspondingly
-  **not offered anywhere in the UI** - it would need Tier 2's EEPROM halt flag to mean
-  anything, and showing a control that does nothing would be dishonest.
+- **Player firmware and the flash-once workflow (Tier 2 / Phase 5).** Browser-side
+  bytecode compilation, transfer, verification, and halt-flag commands exist, but no
+  Arduino sketch was written and no STK500 flashing code exists. This needs the
+  GPLv2/GPLv3 firmware decision, the teacher-only flashing access decision, an Arduino
+  build environment, and real hardware to validate watchdog timing and EEPROM
+  persistence.
 - **The Arduino-C export fallback (Phase 7).** Safari/Firefox users currently see the
   "open in Chrome or Edge" message with no export alternative yet.
 - **A device-profile UI** for a teacher to correct the assumed default port wiring

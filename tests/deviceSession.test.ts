@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeviceSession } from '../src/device/DeviceSession';
-import { DeviceId } from '../src/device/MakeblockProtocol';
-import { autoRespond, createFakeLink, encodeFloatReply } from './fakeSerialLink';
+import { DeviceId, PlayerCommand } from '../src/device/MakeblockProtocol';
+import { autoRespond, createFakeLink, encodeByteReply, encodeFloatReply, encodeStringReply } from './fakeSerialLink';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -60,6 +60,17 @@ describe('DeviceSession.identify', () => {
     await session.identify();
 
     expect(session.getProfile().firmwareVersion).toBe('06.01.009');
+  });
+
+  it('marks mBot VR Player firmware as supporting on-robot programs', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake, 'mBot VR Player 0.1.0');
+    const session = new DeviceSession(fake.link, 'usb');
+
+    await session.identify();
+
+    expect(session.getProfile().supportsOnRobotPrograms).toBe(true);
+    expect(session.getProfile().protocolVersion).toBe('player-bytecode-v1');
   });
 
   it('queries device 0 (VERSION), not a sensor, so identify never depends on port wiring', async () => {
@@ -278,5 +289,69 @@ describe('DeviceSession actuators', () => {
     const promise = session.wink();
     await vi.advanceTimersByTimeAsync(150 * 4 + 10);
     await expect(promise).resolves.toBeUndefined();
+  });
+});
+
+describe('DeviceSession Player firmware storage', () => {
+  function createPlayerSession(): { fake: ReturnType<typeof createFakeLink>; session: DeviceSession } {
+    const fake = createFakeLink();
+    fake.onWrite((bytes) => {
+      const index = bytes[3];
+      const deviceId = bytes[5];
+      if (deviceId === DeviceId.VERSION) {
+        fake.emit(encodeStringReply(index, 'mBot VR Player 0.1.0'));
+      } else if (deviceId === DeviceId.PLAYER) {
+        fake.emit(encodeByteReply(index, 1));
+      }
+    });
+    return { fake, session: new DeviceSession(fake.link, 'usb') };
+  }
+
+  it('writes a stored program in chunks, verifies it, then commits it', async () => {
+    const { fake, session } = createPlayerSession();
+    await session.identify();
+    session.confirmIdentity();
+    const progress: Array<[number, number]> = [];
+    const bytes = Uint8Array.from(Array.from({ length: 40 }, (_, i) => i));
+
+    await session.writeStoredProgram(bytes, 0x1234, (sent, total) => progress.push([sent, total]));
+
+    const playerCommands = fake.writes.filter((frame) => frame[5] === DeviceId.PLAYER).map((frame) => frame[6]);
+    expect(playerCommands).toEqual([
+      PlayerCommand.BEGIN_PROGRAM_WRITE,
+      PlayerCommand.WRITE_PROGRAM_CHUNK,
+      PlayerCommand.WRITE_PROGRAM_CHUNK,
+      PlayerCommand.VERIFY_PROGRAM,
+      PlayerCommand.COMMIT_PROGRAM,
+    ]);
+    expect(progress).toEqual([
+      [32, 40],
+      [40, 40],
+    ]);
+    expect(session.getStatus().phase).toBe('ready');
+  });
+
+  it('sets the boot-idle halt flag when clearing the stored program', async () => {
+    const { fake, session } = createPlayerSession();
+    await session.identify();
+    session.confirmIdentity();
+
+    await session.clearStoredProgram();
+
+    const clearFrame = fake.writes.find((frame) => frame[5] === DeviceId.PLAYER);
+    expect(clearFrame?.[6]).toBe(PlayerCommand.SET_BOOT_IDLE);
+    expect(clearFrame?.[7]).toBe(1);
+  });
+
+  it('rejects stored-program writes on factory firmware', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake, '06.01.009');
+    const session = new DeviceSession(fake.link, 'usb');
+    await session.identify();
+    session.confirmIdentity();
+
+    await expect(session.writeStoredProgram(Uint8Array.of(1, 2, 3), 0)).rejects.toMatchObject({
+      code: 'ERR_FIRMWARE_UNKNOWN',
+    });
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as Blockly from 'blockly/core';
 import { compileWorkspace } from '../blocks/compile';
+import { BytecodeCompileError, compileWorkspaceToPlayerBytecode } from '../device/bytecode';
 import { assessHardwareCompatibility, hasBlockingIssue } from '../device/preflight';
 import { createSerialRuntime } from '../device/SerialRobotRuntime';
 import { isConnected } from '../device/types';
@@ -41,15 +42,23 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
   const runnerRef = useRef<ProgramRunner | null>(null);
   const [running, setRunning] = useState(false);
   const [issues, setIssues] = useState<ReturnType<typeof assessHardwareCompatibility>>([]);
+  const [storeIssues, setStoreIssues] = useState<ReturnType<typeof assessHardwareCompatibility>>([]);
 
   useEffect(() => {
     const workspace = getWorkspace();
     if (!workspace) {
       setIssues([]);
+      setStoreIssues([]);
       return;
     }
     const profile = controller.getSession()?.getProfile();
     setIssues(assessHardwareCompatibility(workspace, { hasDisplay: profile?.hasDisplay ?? false }));
+    setStoreIssues(
+      assessHardwareCompatibility(workspace, {
+        hasDisplay: profile?.hasDisplay ?? false,
+        onRobotProgram: true,
+      }),
+    );
     // `controller.status` is included so a fresh identify (which can resolve a new
     // profile, e.g. a configured display) re-runs this; `controller.getSession` itself
     // is a stable closure and would not otherwise trigger the effect.
@@ -117,6 +126,65 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
     runner.start(compiled.code);
   }, [controller, getWorkspace, handleStop, issues, onHighlight, pushToast, diagnosticLog]);
 
+  const handleStoreProgram = useCallback(async () => {
+    const workspace = getWorkspace();
+    const session = controller.getSession();
+    if (!workspace || !session) return;
+
+    if (controller.status.phase === 'ready' && controller.status.link === 'bluetooth') {
+      pushToast('error', 'Programs can only be put on the robot through the cable.');
+      return;
+    }
+    if (!session.getProfile().supportsOnRobotPrograms) {
+      pushToast('error', 'This robot needs mBot VR Player firmware before it can store programs.');
+      return;
+    }
+    if (hasBlockingIssue(storeIssues)) {
+      pushToast('error', 'Fix the blocked items below before putting this program on the robot.');
+      return;
+    }
+
+    try {
+      const compiled = compileWorkspace(workspace, { highlight: false });
+      if (!compiled.hasStart) {
+        pushToast('info', 'Add a "when program starts" block before putting this on your robot.');
+        return;
+      }
+      if (compiled.attachedBlocks === 0) {
+        pushToast('info', 'Drag some blocks underneath "when program starts", then put it on your robot.');
+        return;
+      }
+      const program = compileWorkspaceToPlayerBytecode(workspace);
+      await session.writeStoredProgram(program.bytes, program.checksum);
+      pushToast('success', 'Program is on your robot.');
+    } catch (error) {
+      diagnosticLog.logError('Stored program transfer failed', error);
+      const message =
+        error instanceof BytecodeCompileError
+          ? error.message
+          : 'Program did not make it onto the robot. Run it with the cable instead.';
+      pushToast('error', message);
+    }
+  }, [controller, diagnosticLog, getWorkspace, pushToast, storeIssues]);
+
+  const handleClearStoredProgram = useCallback(async () => {
+    const session = controller.getSession();
+    if (!session) return;
+    if (!session.getProfile().supportsOnRobotPrograms) {
+      pushToast('error', 'This robot needs mBot VR Player firmware before stored programs can be cleared.');
+      return;
+    }
+    if (!window.confirm("Clear the program stored on this robot? It will stay idle after it restarts.")) return;
+
+    try {
+      await session.clearStoredProgram();
+      pushToast('success', "Robot program cleared. It will stay idle after it restarts.");
+    } catch (error) {
+      diagnosticLog.logError('Stored program clear failed', error);
+      pushToast('error', "The robot's stored program was not cleared. Keep it connected and try again.");
+    }
+  }, [controller, diagnosticLog, pushToast]);
+
   const handleFocusBlock = useCallback(
     (blockId: string) => {
       onHighlight(blockId);
@@ -126,9 +194,31 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
   );
 
   const connected = isConnected(controller.status);
+  const connectedProfile = connected && 'profile' in controller.status ? controller.status.profile : null;
+  const connectedLink = connected && 'link' in controller.status ? controller.status.link : null;
+  const transferring = controller.status.phase === 'sending' || controller.status.phase === 'verifying';
+  const storeDisabledReason =
+    connected && controller.status.phase !== 'stopUnconfirmed' && controller.status.phase !== 'stopping'
+      ? connectedLink === 'bluetooth'
+        ? 'Putting a program on the robot needs the cable. Wireless can only drive it live.'
+        : !connectedProfile?.supportsOnRobotPrograms
+          ? 'On-robot programs need mBot VR Player firmware. Use Run on robot for tethered control.'
+          : hasBlockingIssue(storeIssues)
+            ? 'Fix the blocked items below before putting this program on the robot.'
+            : undefined
+      : undefined;
+  const stopState = controller.status.phase === 'stopping' || controller.status.phase === 'stopUnconfirmed';
+  const storeDisabled = running || transferring || stopState || Boolean(storeDisabledReason) || !connectedProfile?.supportsOnRobotPrograms;
+  const clearDisabled =
+    running ||
+    transferring ||
+    stopState ||
+    connectedLink === 'bluetooth' ||
+    !connectedProfile?.supportsOnRobotPrograms;
   const runDisabledReason = hasBlockingIssue(issues)
     ? 'Fix the blocked items below before running on the robot.'
     : undefined;
+  const shownIssues = connectedProfile?.supportsOnRobotPrograms ? storeIssues : issues;
 
   return (
     <>
@@ -143,9 +233,14 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
           onDisconnect={controller.disconnect}
           onRun={handleRun}
           onStop={() => void handleStop()}
+          onStoreProgram={() => void handleStoreProgram()}
+          onClearStoredProgram={() => void handleClearStoredProgram()}
           running={running}
           runDisabled={hasBlockingIssue(issues)}
           runDisabledReason={runDisabledReason}
+          storeDisabled={storeDisabled}
+          clearDisabled={clearDisabled}
+          storeDisabledReason={storeDisabledReason}
         />
         {controller.status.phase === 'stopUnconfirmed' && (
           <StopBanner onStop={() => void handleStop()} onAcknowledge={controller.acknowledgeStopUnconfirmed} />
@@ -154,7 +249,7 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
 
       {connected && (
         <Collapsible title="Robot compatibility check">
-          <PreflightList issues={issues} onFocusBlock={handleFocusBlock} />
+          <PreflightList issues={shownIssues} onFocusBlock={handleFocusBlock} />
         </Collapsible>
       )}
 

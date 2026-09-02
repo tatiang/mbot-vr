@@ -883,6 +883,26 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin: 0;
 }
 
+.device-panel__storage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.device-panel__progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.device-panel__progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms ease;
+}
+
 .stop-banner {
   margin: 0 12px 12px;
   padding: 12px 14px;

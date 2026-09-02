@@ -76,6 +76,50 @@ describe('assessHardwareCompatibility', () => {
     workspace.dispose();
   });
 
+  it('can run the stricter on-robot bytecode pass without affecting tethered checks by default', () => {
+    const workspace = workspaceFrom({
+      blocks: {
+        languageVersion: 0,
+        blocks: [
+          {
+            type: 'mbot_when_start',
+            next: {
+              block: {
+                type: 'mbot_wait',
+                inputs: { SECONDS: { block: { type: 'mbot_timer' } } },
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(assessHardwareCompatibility(workspace)).toEqual([]);
+    expect(assessHardwareCompatibility(workspace, { onRobotProgram: true })[0]).toMatchObject({
+      severity: 'blocking',
+      blockType: 'mbot_wait',
+    });
+    workspace.dispose();
+  });
+
+  it('reports oversized programs as blocked before send', () => {
+    let tail: object = { type: 'mbot_stop_motors' };
+    for (let i = 0; i < 1000; i += 1) {
+      tail = { type: 'mbot_stop_motors', next: { block: tail } };
+    }
+    const workspace = workspaceFrom({
+      blocks: {
+        languageVersion: 0,
+        blocks: [{ type: 'mbot_when_start', next: { block: tail } }],
+      },
+    });
+
+    const issues = assessHardwareCompatibility(workspace, { onRobotProgram: true });
+    expect(issues[0]).toMatchObject({ severity: 'blocking' });
+    expect(issues[0].message).toContain('too large');
+    workspace.dispose();
+  });
+
   it('identifies the offending block by id, so the workspace can highlight it', () => {
     const workspace = workspaceWithBlocks(['mbot_robot_x']);
     const [issue] = assessHardwareCompatibility(workspace);

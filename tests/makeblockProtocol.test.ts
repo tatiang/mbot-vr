@@ -6,6 +6,7 @@ import {
   LedIndex,
   MotorPort,
   ONBOARD_LED_PORT,
+  PlayerCommand,
   ReplyType,
   decodeFloatLE,
   decodeInt16LE,
@@ -13,6 +14,7 @@ import {
   encodeFrame,
   encodeGet,
   encodeMotorRun,
+  encodePlayerGet,
   encodeReset,
   encodeRgbLed,
   encodeRun,
@@ -60,6 +62,22 @@ describe('encodeGet / encodeRun / encodeReset', () => {
   it('encodeVersionGet targets device 0 with no port param, so it never depends on wiring', () => {
     const frame = encodeVersionGet(2);
     expect(Array.from(frame)).toEqual([0xff, 0x55, 3, 2, Action.GET, DeviceId.VERSION]);
+  });
+
+  it('encodePlayerGet uses an indexed GET frame to the custom Player device', () => {
+    const frame = encodePlayerGet(9, PlayerCommand.WRITE_PROGRAM_CHUNK, [0, 0, 0xaa]);
+    expect(Array.from(frame)).toEqual([
+      0xff,
+      0x55,
+      7,
+      9,
+      Action.GET,
+      DeviceId.PLAYER,
+      PlayerCommand.WRITE_PROGRAM_CHUNK,
+      0,
+      0,
+      0xaa,
+    ]);
   });
 });
 

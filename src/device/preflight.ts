@@ -1,4 +1,9 @@
 import type * as Blockly from 'blockly/core';
+import {
+  BytecodeCompileError,
+  PLAYER_MAX_PROGRAM_BYTES,
+  compileWorkspaceToPlayerBytecode,
+} from './bytecode';
 import type { HardwareIssue } from './types';
 
 /**
@@ -27,6 +32,8 @@ const AMBIGUOUS_BLOCKS: Record<string, string> = {
 export interface PreflightOptions {
   /** Whether a Me 7-Segment display module has been configured for the target robot. */
   hasDisplay?: boolean;
+  /** Run the stricter EEPROM bytecode pass used by "Put this on my robot". */
+  onRobotProgram?: boolean;
 }
 
 /**
@@ -60,6 +67,28 @@ export function assessHardwareCompatibility(
 
     if (type in AMBIGUOUS_BLOCKS) {
       issues.push({ severity: 'warning', blockId: block.id, blockType: type, message: AMBIGUOUS_BLOCKS[type] });
+    }
+  }
+
+  if (options.onRobotProgram && !hasBlockingIssue(issues)) {
+    try {
+      compileWorkspaceToPlayerBytecode(workspace);
+    } catch (error) {
+      if (error instanceof BytecodeCompileError) {
+        issues.push({
+          severity: 'blocking',
+          blockId: error.blockId,
+          blockType: error.blockType,
+          message: error.message.includes('bytes')
+            ? `This program is too large to store on the robot. The robot can store ${PLAYER_MAX_PROGRAM_BYTES} bytes; run it with the cable instead.`
+            : error.message,
+        });
+      } else {
+        issues.push({
+          severity: 'blocking',
+          message: 'This program cannot be stored on the robot yet. Run it with the cable instead.',
+        });
+      }
     }
   }
 
