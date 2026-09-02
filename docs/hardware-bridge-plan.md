@@ -619,7 +619,7 @@ that no software installation, no extension and no admin-installed driver is req
 | Path | Responsibility |
 | --- | --- |
 | `src/device/types.ts` | Shared device-layer types: execution target, connection status, device profile, hardware issues. |
-| `src/device/featureFlag.ts` | Whether the hardware UI is enabled at all (off by default). |
+| `src/device/featureFlag.ts` | Whether the hardware UI is enabled, including explicit opt-out handling. |
 | `src/device/capabilities.ts` | Feature detection: Web Serial present, secure context. |
 | `src/device/MakeblockProtocol.ts` | Frame encode/decode for `0xFF 0x55`. Pure functions over `Uint8Array`. |
 | `src/device/SerialTransport.ts` | Opens a real `SerialPort`, pumps its streams into a `SerialLink`. |
@@ -1104,9 +1104,10 @@ hardware, watchdog timing, or power-cycle behaviour.
   builds up a queue to flush in the first place. See the comment at the top of
   `StopController.ts`.
 
-Enable the feature during development with `?hardware=1` in the URL (persists via
-`localStorage`) or `localStorage.setItem('mbotvr.hardware.enabled', '1')`.
-`?hardware=0` turns it back off and clears the stored preference.
+The hardware surface is enabled by default. Use `?hardware=0` in the URL or
+`localStorage.setItem('mbotvr.hardware.enabled', '0')` to opt out and avoid downloading
+the device chunk; use `?hardware=1` or remove the localStorage key to return to the
+default-on experience.
 
 
 ---

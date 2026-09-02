@@ -23,9 +23,10 @@ paid for.
 
 ## Current state (as of this handoff)
 
-Behind a feature flag (`?hardware=1` in the URL, or
-`localStorage.setItem('mbotvr.hardware.enabled','1')` - see
-`src/device/featureFlag.ts`), mBot VR can now, **confirmed on real hardware**:
+The hardware surface is enabled by default in Chrome/Edge, with an explicit opt-out via
+`?hardware=0` or `localStorage.setItem('mbotvr.hardware.enabled','0')` (see
+`src/device/featureFlag.ts`). With that surface available, mBot VR can now,
+**confirmed on real hardware**:
 
 - Connect to a physical mBot v1.x over Web Serial (USB; Bluetooth RFCOMM is wired up
   but unconfirmed - see the plan's U4).

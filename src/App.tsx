@@ -54,10 +54,10 @@ const NEW_PROJECT_NAME = 'My mBot program';
 const APP_VERSION = '1.2.0';
 
 /**
- * The physical-robot feature, loaded only when a student has turned it on (see
- * `isHardwareFeatureEnabled`). `React.lazy` is what makes "off" mean "never
+ * The physical-robot feature, loaded when `isHardwareFeatureEnabled()` allows it.
+ * The default is now on; an explicit `?hardware=0` opt-out still means "never
  * downloaded" - Vite code-splits this and everything it imports from `src/device/*`
- * into a separate chunk that a simulator-only session never requests.
+ * into a separate chunk that an opted-out simulator-only session never requests.
  */
 const DeviceSection = lazy(() => import('./components/DeviceSection').then((m) => ({ default: m.DeviceSection })));
 
