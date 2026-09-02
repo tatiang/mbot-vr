@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DeviceSession } from '../src/device/DeviceSession';
 import { DeviceId, MotorPort } from '../src/device/MakeblockProtocol';
 import { stopRobot } from '../src/device/StopController';
-import { autoRespond, createFakeLink } from './fakeSerialLink';
+import { autoRespond, createFakeLink, encodeStringReply } from './fakeSerialLink';
 
 // Deliberately real timers, not fake ones: the stop ladder's own gaps (60ms, 300ms) are
 // small enough that these tests run in well under a second, and the ladder's timing
@@ -71,7 +71,7 @@ describe('stopRobot', () => {
         // board needing the reset pulse to come back to life.
         probesAnswered += 1;
         if (probesAnswered >= 2) {
-          fake.emit(new Uint8Array([0xff, 0x55, 5, idx, 1, 0, 0, 0]));
+          fake.emit(encodeStringReply(idx, '06.01.009'));
         }
       }
       // RUN/RESET frames (halt commands) get no reply either way - matching the

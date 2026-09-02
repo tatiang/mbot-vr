@@ -8,20 +8,31 @@
  * arrays of numbers and nothing else.
  *
  * Confidence levels, so a future change knows what to trust:
- *  - Frame shape (header, length byte, index byte) and the four action codes
- *    (GET/RUN/RESET/START) and device ids used here come directly from reading the
- *    firmware source. High confidence.
- *  - The exact byte layout Makeblock's firmware uses for a *reply* (which value-type
- *    byte precedes which kind of payload) was not confirmed against a byte capture
- *    from real hardware - the research for this feature could not reach a physical
- *    mBot. `decodeFloatLE`/`decodeInt16LE` below are reasonable, commonly-used
- *    encodings for an AVR firmware, but they are a best effort pending the phase-0
- *    spike in `docs/hardware-bridge-plan.md` §4 (U2/U6). `FrameParser` itself does not
- *    depend on this: it only needs the header and length byte to find frame
- *    boundaries, which is true regardless of how the payload is interpreted.
+ *  - **The request frame shape** (`FF 55 <length> <idx> <action> <device> <params...>`,
+ *    where `length` covers everything from `idx` onward) and the four action codes
+ *    (GET/RUN/RESET/START) and device ids used here come directly from reading
+ *    `serialHandle()`/`parseData()` in the firmware source, byte offset by byte offset.
+ *    High confidence.
+ *  - **The reply frame shape is asymmetric with the request shape** - it carries no
+ *    length byte at all. Confirmed directly from the firmware's own send functions
+ *    (`writeHead`/`writeSerial`/`sendFloat`/`sendString`/`callOK`, all in
+ *    `mbot_factory_firmware.ino`): a `GET` reply is
+ *    `FF 55 <idx> <type> <type-specific data> \r\n` (the `\r\n` from `writeEnd()`,
+ *    which is `Serial.println()`); a `RUN`/`RESET`/`START` acknowledgement
+ *    (`callOK()`) is just `FF 55 \r\n` with **no index and no data at all** - meaning
+ *    those cannot be correlated to a specific outgoing command, which is exactly why
+ *    this app never awaits a reply to a RUN/RESET/START write (see `DeviceSession`'s
+ *    "fire and forget" actuator methods). `FrameParser` below implements this shape.
+ *    An earlier version of this file assumed a uniform length-prefixed reply, which
+ *    field-testing against a real mBot immediately showed was wrong (every identify
+ *    attempt timed out even though the robot was replying) - this rewrite is the fix.
+ *  - **Type-code bytes** (1=byte, 2=float, 3=a firmware-internal "short" that is
+ *    actually 4 bytes wide, 4=length-prefixed string, 5=double) come directly from
+ *    `sendByte`/`sendFloat`/`sendShort`/`sendString`/`sendDouble` in the firmware
+ *    source. High confidence.
  *  - The motor port numbers (`MotorPort.LEFT`/`RIGHT`) are the values conventionally
- *    used across third-party mBot protocol implementations, not confirmed against this
- *    fleet's wiring (U3/U7).
+ *    used across third-party mBot protocol implementations, not yet confirmed against
+ *    a specific fleet's wiring (see U3/U7 in `docs/hardware-bridge-plan.md`).
  */
 
 export const FRAME_HEADER_0 = 0xff;
@@ -38,6 +49,8 @@ export type ActionCode = (typeof Action)[keyof typeof Action];
 
 /** Device id byte, for the devices this app's block set actually needs. */
 export const DeviceId = {
+  /** No port, always answers, port-independent - the identify/probe target. */
+  VERSION: 0,
   ULTRASONIC: 1,
   RGB_LED: 8,
   MOTOR: 10,
@@ -58,6 +71,15 @@ export const LedSlot = {
   ALL: 2,
 } as const;
 
+/** Type-code byte a GET reply's data is tagged with (`sendByte`/`sendFloat`/etc.). */
+export const ReplyType = {
+  BYTE: 1,
+  FLOAT: 2,
+  SHORT: 3,
+  STRING: 4,
+  DOUBLE: 5,
+} as const;
+
 const MAX_INDEX = 0xff;
 
 /** Wraps a request index 0-255, the same range the frame's index byte can hold. */
@@ -65,12 +87,12 @@ export function nextIndex(current: number): number {
   return (current + 1) & MAX_INDEX;
 }
 
-// --- encoding ---------------------------------------------------------------------
+// --- encoding (host -> robot; length-prefixed) -------------------------------------
 
 /**
- * Assembles one frame: `FF 55 length index action device ...params`, where `length`
- * covers everything from `index` onward. Every request-encoding helper below funnels
- * through this, so there is exactly one place that gets the framing right.
+ * Assembles one request frame: `FF 55 length index action device ...params`, where
+ * `length` covers everything from `index` onward. Every request-encoding helper below
+ * funnels through this, so there is exactly one place that gets the framing right.
  */
 export function encodeFrame(index: number, action: ActionCode, deviceId: number, params: number[]): Uint8Array {
   const body = [index & 0xff, action, deviceId & 0xff, ...params.map((b) => b & 0xff)];
@@ -85,9 +107,14 @@ export function encodeRun(index: number, deviceId: number, params: number[] = []
   return encodeFrame(index, Action.RUN, deviceId, params);
 }
 
-/** Stops both motors and the buzzer on the firmware side - see the confidence note above. */
+/** Stops both motors and the buzzer on the firmware side. Replies with a bare `callOK()`. */
 export function encodeReset(index: number): Uint8Array {
   return encodeFrame(index, Action.RESET, 0, []);
+}
+
+/** The version query: no port, always answered, regardless of what's physically wired up. */
+export function encodeVersionGet(index: number): Uint8Array {
+  return encodeGet(index, DeviceId.VERSION, []);
 }
 
 /** One motor, one speed. `speed` is clamped to the runtime's -255..255 range. */
@@ -115,22 +142,53 @@ function int16LE(value: number): [number, number] {
   return [v & 0xff, (v >> 8) & 0xff];
 }
 
-// --- decoding ---------------------------------------------------------------------
+// --- decoding (robot -> host; NOT length-prefixed - see the confidence note above) --
 
-/** One complete, framed reply: the echoed index, and everything after it, uninterpreted. */
+/**
+ * One complete, framed reply.
+ *
+ * `index`/`type` are `null` for a `callOK()` acknowledgement (`RUN`/`RESET`/`START`),
+ * which the firmware sends with no index and no data - there is nothing to correlate
+ * it to a specific outgoing write, which is why `DeviceSession` never waits for one.
+ */
 export interface RawFrame {
-  index: number;
+  index: number | null;
+  type: number | null;
   payload: Uint8Array;
 }
 
+/** Data length in bytes for each fixed-size reply type. `STRING` is handled separately (length-prefixed). */
+function fixedDataLength(type: number): number | null {
+  switch (type) {
+    case ReplyType.BYTE:
+      return 1;
+    case ReplyType.FLOAT:
+      return 4;
+    case ReplyType.SHORT:
+      return 4; // despite the name - see the confidence note at the top of this file
+    case ReplyType.DOUBLE:
+      return 8;
+    default:
+      return null;
+  }
+}
+
 /**
- * Turns a byte stream into frames.
+ * Turns a byte stream of robot replies into frames.
  *
  * Serial reads arrive in arbitrary chunks - a frame can span two reads, or one read can
- * contain several frames. `push()` is the only entry point: feed it whatever bytes just
+ * contain several. `push()` is the only entry point: feed it whatever bytes just
  * arrived, and it returns every frame that became complete as a result, in order.
- * Anything before a recognised `FF 55` header is discarded as noise (a partial frame
- * left over from a reset, or line-startup garbage) rather than left to jam the parser.
+ * Anything before a recognised `FF 55` header is discarded as noise.
+ *
+ * Two reply shapes share the `FF 55` prefix and are disambiguated by what follows it:
+ *  - `FF 55 0D 0A` - a bare acknowledgement (`callOK()`); the two bytes right after the
+ *    header are the `\r\n` from `writeEnd()`, with no index or data in between.
+ *  - `FF 55 <idx> <type> <data...> 0D 0A` - a `GET` reply, terminated the same way.
+ * An index byte that happens to equal `0x0D` immediately followed by a type byte of
+ * `0x0A` would be misread as the first shape - a real but rare ambiguity inherent to
+ * this firmware's own protocol, not something a smarter parser can fully resolve
+ * without a stricter framing than the firmware provides.
  */
 export class FrameParser {
   private buffer: number[] = [];
@@ -139,8 +197,8 @@ export class FrameParser {
     for (const byte of chunk) this.buffer.push(byte);
     const frames: RawFrame[] = [];
     let next = this.tryExtractOne();
-    while (next) {
-      frames.push(next);
+    while (next !== undefined) {
+      if (next) frames.push(next);
       next = this.tryExtractOne();
     }
     return frames;
@@ -151,28 +209,68 @@ export class FrameParser {
     this.buffer = [];
   }
 
-  private tryExtractOne(): RawFrame | null {
+  /**
+   * Returns a frame, `null` if it resynchronised past an unparseable header without
+   * producing one (so the caller should immediately try again), or `undefined` if
+   * nothing more can be extracted from the buffer right now.
+   */
+  private tryExtractOne(): RawFrame | null | undefined {
     while (
       this.buffer.length >= 2 &&
       !(this.buffer[0] === FRAME_HEADER_0 && this.buffer[1] === FRAME_HEADER_1)
     ) {
       this.buffer.shift();
     }
-    if (this.buffer.length < 3) return null; // header + length byte not fully in yet
-    const length = this.buffer[2];
-    const total = 3 + length;
-    if (this.buffer.length < total) return null; // frame not fully arrived yet
+    if (this.buffer.length < 2) return undefined; // no header in the buffer yet
+    if (this.buffer.length < 4) return undefined; // not enough to disambiguate the two shapes yet
+
+    // Bare acknowledgement: header immediately followed by \r\n.
+    if (this.buffer[2] === 0x0d && this.buffer[3] === 0x0a) {
+      this.buffer.splice(0, 4);
+      return { index: null, type: null, payload: new Uint8Array(0) };
+    }
+
+    const idx = this.buffer[2];
+    const type = this.buffer[3];
+
+    if (type === ReplyType.STRING) {
+      if (this.buffer.length < 5) return undefined; // need the length byte
+      const strLen = this.buffer[4];
+      const total = 5 + strLen + 2; // header(2) + idx + type + lenByte + chars + CRLF
+      if (this.buffer.length < total) return undefined;
+      const bytes = this.buffer.splice(0, total);
+      const payload = Uint8Array.from(bytes.slice(4, 4 + 1 + strLen));
+      return { index: idx, type, payload };
+    }
+
+    const dataLen = fixedDataLength(type);
+    if (dataLen === null) {
+      // An unrecognised type byte - resync past just the header rather than hang
+      // forever guessing a length. The bytes we drop are lost, but the parser stays
+      // alive for the next real frame instead of stalling permanently.
+      this.buffer.splice(0, 2);
+      return null;
+    }
+    const total = 4 + dataLen + 2; // header(2) + idx + type + data + CRLF
+    if (this.buffer.length < total) return undefined;
     const bytes = this.buffer.splice(0, total);
-    const index = bytes[3];
-    const payload = Uint8Array.from(bytes.slice(4));
-    return { index, payload };
+    const payload = Uint8Array.from(bytes.slice(4, 4 + dataLen));
+    return { index: idx, type, payload };
   }
 }
 
+/** Decodes a `STRING`-type payload (`[lengthByte, ...chars]`) back into text. */
+export function decodeString(payload: Uint8Array): string {
+  if (payload.length < 1) return '';
+  const len = payload[0];
+  const chars = payload.slice(1, 1 + len);
+  return String.fromCharCode(...chars);
+}
+
 /**
- * Reads a little-endian signed 16-bit value at `offset` in `bytes`. Used for motor
- * speed echoes and any short-typed sensor reply. See the confidence note at the top of
- * this file.
+ * Reads a little-endian signed 16-bit value at `offset` in `bytes`. Note the firmware's
+ * own `SHORT` reply type (3) is actually 4 bytes wide, not 2 - this helper is for this
+ * app's own request-side encoding (motor speed), not for decoding a `SHORT` reply.
  */
 export function decodeInt16LE(bytes: Uint8Array, offset = 0): number {
   if (bytes.length < offset + 2) return 0;
@@ -182,7 +280,7 @@ export function decodeInt16LE(bytes: Uint8Array, offset = 0): number {
 
 /**
  * Reads a little-endian IEEE-754 float at `offset` in `bytes`. Used for the ultrasonic
- * and line-follower readings. See the confidence note at the top of this file.
+ * and line-follower readings, both sent by the firmware as type `FLOAT` (2).
  */
 export function decodeFloatLE(bytes: Uint8Array, offset = 0): number {
   if (bytes.length < offset + 4) return 0;

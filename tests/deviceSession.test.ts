@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeviceSession } from '../src/device/DeviceSession';
-import { DeviceId, FrameParser } from '../src/device/MakeblockProtocol';
-import { autoRespond, createFakeLink } from './fakeSerialLink';
+import { DeviceId } from '../src/device/MakeblockProtocol';
+import { autoRespond, createFakeLink, encodeFloatReply } from './fakeSerialLink';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -23,6 +23,27 @@ describe('DeviceSession.identify', () => {
     expect(session.getStatus().phase).toBe('confirmingIdentity');
     expect(statuses).toContain('identifying');
     expect(statuses).toContain('confirmingIdentity');
+  });
+
+  it('captures the firmware version string reported by the VERSION GET', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake, '06.01.009');
+    const session = new DeviceSession(fake.link, 'usb');
+
+    await session.identify();
+
+    expect(session.getProfile().firmwareVersion).toBe('06.01.009');
+  });
+
+  it('queries device 0 (VERSION), not a sensor, so identify never depends on port wiring', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake);
+    const session = new DeviceSession(fake.link, 'usb');
+
+    await session.identify();
+
+    const request = fake.writes[0];
+    expect(request[5]).toBe(DeviceId.VERSION);
   });
 
   it('rejects with ERR_NO_REPLY after 3 silent attempts', async () => {
@@ -165,10 +186,7 @@ describe('DeviceSession sensors', () => {
     fake.onWrite((bytes) => {
       attempt += 1;
       if (attempt >= 2) {
-        const parser = new FrameParser();
-        const [frame] = parser.push(bytes);
-        void frame;
-        fake.emit(new Uint8Array([0xff, 0x55, 5, bytes[3], 1, 0, 0, 0]));
+        fake.emit(encodeFloatReply(bytes[3], 12.5));
       }
     });
     const session = new DeviceSession(fake.link, 'usb');

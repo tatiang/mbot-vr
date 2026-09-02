@@ -3,16 +3,20 @@ import {
   Action,
   DeviceId,
   FrameParser,
+  ReplyType,
   decodeFloatLE,
   decodeInt16LE,
+  decodeString,
   encodeFrame,
   encodeGet,
   encodeMotorRun,
   encodeReset,
   encodeRgbLed,
   encodeRun,
+  encodeVersionGet,
   nextIndex,
 } from '../src/device/MakeblockProtocol';
+import { encodeAck, encodeFloatReply, encodeStringReply } from './fakeSerialLink';
 
 describe('encodeFrame', () => {
   it('assembles header, length, index, action, device and params in order', () => {
@@ -48,6 +52,11 @@ describe('encodeGet / encodeRun / encodeReset', () => {
   it('encodeReset carries no device or params', () => {
     const frame = encodeReset(7);
     expect(Array.from(frame)).toEqual([0xff, 0x55, 3, 7, Action.RESET, 0]);
+  });
+
+  it('encodeVersionGet targets device 0 with no port param, so it never depends on wiring', () => {
+    const frame = encodeVersionGet(2);
+    expect(Array.from(frame)).toEqual([0xff, 0x55, 3, 2, Action.GET, DeviceId.VERSION]);
   });
 });
 
@@ -95,19 +104,42 @@ describe('nextIndex', () => {
   });
 });
 
+// FrameParser parses REPLIES (robot -> host), which - confirmed against the real
+// firmware source - are NOT length-prefixed like requests are. See the confidence
+// note at the top of MakeblockProtocol.ts: an earlier version of this parser assumed a
+// uniform length-prefixed shape for both directions, and field-testing against a real
+// mBot showed every identify attempt timing out even though the robot was replying.
 describe('FrameParser', () => {
-  it('extracts a single frame delivered in one chunk', () => {
+  it('extracts a bare acknowledgement (callOK) with no index', () => {
     const parser = new FrameParser();
-    const frame = encodeGet(5, DeviceId.ULTRASONIC, [3]);
-    const frames = parser.push(frame);
+    const frames = parser.push(encodeAck());
     expect(frames).toHaveLength(1);
-    expect(frames[0].index).toBe(5);
-    expect(Array.from(frames[0].payload)).toEqual([Action.GET, DeviceId.ULTRASONIC, 3]);
+    expect(frames[0].index).toBeNull();
+    expect(frames[0].type).toBeNull();
+    expect(frames[0].payload).toHaveLength(0);
   });
 
-  it('assembles a frame split across two reads', () => {
+  it('extracts a FLOAT-type GET reply', () => {
     const parser = new FrameParser();
-    const frame = encodeMotorRun(9, 9, 100);
+    const frames = parser.push(encodeFloatReply(5, 17.5));
+    expect(frames).toHaveLength(1);
+    expect(frames[0].index).toBe(5);
+    expect(frames[0].type).toBe(ReplyType.FLOAT);
+    expect(decodeFloatLE(frames[0].payload)).toBeCloseTo(17.5, 4);
+  });
+
+  it('extracts a STRING-type GET reply', () => {
+    const parser = new FrameParser();
+    const frames = parser.push(encodeStringReply(2, '06.01.009'));
+    expect(frames).toHaveLength(1);
+    expect(frames[0].index).toBe(2);
+    expect(frames[0].type).toBe(ReplyType.STRING);
+    expect(decodeString(frames[0].payload)).toBe('06.01.009');
+  });
+
+  it('assembles a reply split across two reads', () => {
+    const parser = new FrameParser();
+    const frame = encodeFloatReply(9, 42);
     const first = parser.push(frame.slice(0, 4));
     expect(first).toHaveLength(0);
     const second = parser.push(frame.slice(4));
@@ -115,40 +147,45 @@ describe('FrameParser', () => {
     expect(second[0].index).toBe(9);
   });
 
-  it('extracts multiple frames delivered in one chunk', () => {
+  it('extracts multiple replies delivered in one chunk', () => {
     const parser = new FrameParser();
-    const a = encodeReset(1);
-    const b = encodeReset(2);
+    const a = encodeAck();
+    const b = encodeFloatReply(2, 1);
     const combined = new Uint8Array([...a, ...b]);
     const frames = parser.push(combined);
-    expect(frames.map((f) => f.index)).toEqual([1, 2]);
+    expect(frames.map((f) => f.index)).toEqual([null, 2]);
   });
 
   it('discards garbage bytes preceding a valid header', () => {
     const parser = new FrameParser();
-    const frame = encodeReset(4);
-    const withGarbage = new Uint8Array([0x00, 0x11, 0xaa, ...frame]);
+    const withGarbage = new Uint8Array([0x00, 0x11, 0xaa, ...encodeAck()]);
     const frames = parser.push(withGarbage);
     expect(frames).toHaveLength(1);
-    expect(frames[0].index).toBe(4);
+    expect(frames[0].index).toBeNull();
   });
 
-  it('does not emit a frame until enough bytes for the declared length have arrived', () => {
+  it('does not emit a frame until all of a variable-length string has arrived', () => {
     const parser = new FrameParser();
-    const frame = encodeMotorRun(1, 9, 50);
-    // Header + length byte only.
-    const frames = parser.push(frame.slice(0, 3));
+    const frame = encodeStringReply(1, 'a longer version string');
+    // Header, index, type and the length byte only - none of the characters yet.
+    const frames = parser.push(frame.slice(0, 5));
     expect(frames).toHaveLength(0);
   });
 
   it('recovers after reset() from a truncated frame left in the buffer', () => {
     const parser = new FrameParser();
-    parser.push(new Uint8Array([0xff, 0x55, 10, 1, 2])); // claims 10 bytes, only 2 arrived
+    parser.push(new Uint8Array([0xff, 0x55, 3, 4])); // idx=3, type=4 (string), no length byte yet
     parser.reset();
-    const frame = encodeReset(9);
-    const frames = parser.push(frame);
+    const frames = parser.push(encodeAck());
     expect(frames).toHaveLength(1);
-    expect(frames[0].index).toBe(9);
+  });
+
+  it('resynchronises past an unrecognised type byte instead of hanging', () => {
+    const parser = new FrameParser();
+    const bogus = new Uint8Array([0xff, 0x55, 1, 0x99, 0, 0, 0x0d, 0x0a]);
+    const good = encodeFloatReply(2, 3);
+    const frames = parser.push(new Uint8Array([...bogus, ...good]));
+    expect(frames.some((f) => f.index === 2)).toBe(true);
   });
 });
 

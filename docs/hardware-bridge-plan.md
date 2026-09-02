@@ -860,6 +860,33 @@ touch the simulator path.
   `npm run build` both pass; the build confirms `DeviceSection` code-splits into its
   own chunk (≈23 KB, ≈8 KB gzipped).
 
+### First real-hardware finding, and the fix
+
+The first live test against a physical mBot (2 September 2026, over USB/CH340)
+surfaced exactly the kind of bug this plan flagged as possible: `identify()` timed out
+with `ERR_NO_REPLY` on every attempt, even though the robot was almost certainly
+answering. Reading Makeblock's firmware source directly (rather than relying on
+secondhand summaries, which is what the original protocol notes above were partly
+built on) found the actual cause: **the reply direction is not length-prefixed the way
+the request direction is.** A `GET` reply is `FF 55 <idx> <type> <data...> \r\n`, and a
+`RUN`/`RESET`/`START` acknowledgement is a bare `FF 55 \r\n` with no index at all -
+confirmed byte-for-byte against `writeHead`/`sendFloat`/`sendString`/`callOK` in
+`mbot_factory_firmware.ino`. `FrameParser` originally assumed a uniform length-prefixed
+shape for both directions, so it was misreading every reply's index byte as a length
+and waiting for a frame that would never complete.
+
+This has been corrected in `MakeblockProtocol.ts` (`FrameParser` now implements the
+real, asymmetric shape) and `DeviceSession.ts` (`identify`/`probe` now query `VERSION`,
+device id `0`, rather than the ultrasonic sensor - not because the sensor didn't reply
+too, but because `VERSION` needs no port and doubles as a genuine firmware-version
+readout for the device profile). Every test that mocked a reply has been rewritten to
+emit byte-accurate frames instead of the previous incorrect shape - the earlier 111
+"passing" tests were, in hindsight, mostly validating internal self-consistency against
+the wrong assumption rather than the real protocol, which is precisely why this needed
+a human with actual hardware to surface it. This is the first of the plan's "unverified
+until tested" claims to be confirmed and corrected against real hardware, and the
+confidence note at the top of `MakeblockProtocol.ts` has been rewritten accordingly.
+
 ### What is explicitly not built
 
 - **Player firmware, EEPROM program storage, the flash-once workflow (Tier 2 /

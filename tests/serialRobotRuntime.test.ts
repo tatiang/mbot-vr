@@ -2,15 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { DeviceSession } from '../src/device/DeviceSession';
 import { DeviceId, MotorPort } from '../src/device/MakeblockProtocol';
 import { createSerialRuntime } from '../src/device/SerialRobotRuntime';
-import { createFakeLink } from './fakeSerialLink';
+import { createFakeLink, encodeFloatReply } from './fakeSerialLink';
 
 function replyWithFloat(fake: ReturnType<typeof createFakeLink>, value: number): void {
-  fake.onWrite((bytes) => {
-    const idx = bytes[3];
-    const payload = new Uint8Array(4);
-    new DataView(payload.buffer).setFloat32(0, value, true);
-    fake.emit(new Uint8Array([0xff, 0x55, 1 + payload.length, idx, ...payload]));
-  });
+  fake.onWrite((bytes) => fake.emit(encodeFloatReply(bytes[3], value)));
 }
 
 describe('createSerialRuntime', () => {

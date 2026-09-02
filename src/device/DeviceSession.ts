@@ -2,6 +2,7 @@ import type { SerialLink } from './SerialTransport';
 import {
   DeviceId,
   FrameParser,
+  decodeString,
   encodeGet,
   encodeMotorRun,
   encodeReset,
@@ -92,31 +93,38 @@ export class DeviceSession {
   // --- connect / identify -----------------------------------------------------------
 
   /**
-   * Probes for a live, protocol-speaking board. Up to `IDENTIFY_ATTEMPTS`, each
-   * waiting `IDENTIFY_TIMEOUT_MS` for a reply, `IDENTIFY_RETRY_GAP_MS` apart - see
-   * `docs/hardware-bridge-plan.md` §8. On success the session holds a fresh
-   * `DeviceProfile` (with the kit's default port wiring; see the constants above) and
-   * moves to `confirmingIdentity`, where the caller is expected to `wink()` and then
-   * call `confirmIdentity()` once a student has agreed this is their robot.
+   * Probes for a live, protocol-speaking board via a `VERSION` GET - the one request
+   * that needs no port and that the firmware answers regardless of what's physically
+   * wired up (see the confidence note in `MakeblockProtocol.ts`). Up to
+   * `IDENTIFY_ATTEMPTS`, each waiting `IDENTIFY_TIMEOUT_MS` for a reply,
+   * `IDENTIFY_RETRY_GAP_MS` apart - see `docs/hardware-bridge-plan.md` §8. On success
+   * the session holds a fresh `DeviceProfile` (the firmware's own reported version,
+   * plus the kit's default port wiring; see the constants above) and moves to
+   * `confirmingIdentity`, where the caller is expected to `wink()` and then call
+   * `confirmIdentity()` once a student has agreed this is their robot.
    */
   async identify(): Promise<void> {
     const start = performance.now();
     for (let attempt = 1; attempt <= IDENTIFY_ATTEMPTS; attempt += 1) {
       this.setStatus({ phase: 'identifying', link: this.linkKind, attempt });
-      const alive = await this.probe(IDENTIFY_TIMEOUT_MS);
-      if (alive) {
+      try {
+        const payload = await this.requestVersion(IDENTIFY_TIMEOUT_MS);
+        const version = decodeString(payload) || null;
         this.profile = {
           ...UNKNOWN_DEVICE_PROFILE,
+          firmwareVersion: version,
           ultrasonicPort: DEFAULT_ULTRASONIC_PORT,
           lineFollowerPort: DEFAULT_LINE_FOLLOWER_PORT,
         };
         this.callbacks.onLog?.({
-          message: 'Robot answered - confirming identity',
+          message: version ? `Robot answered - firmware ${version}` : 'Robot answered - confirming identity',
           elapsedMs: Math.round(performance.now() - start),
           retryCount: attempt - 1,
         });
         this.setStatus({ phase: 'confirmingIdentity', link: this.linkKind, profile: this.profile });
         return;
+      } catch {
+        // fall through and retry, or give up below once attempts are exhausted
       }
       if (attempt < IDENTIFY_ATTEMPTS) await wait(IDENTIFY_RETRY_GAP_MS);
     }
@@ -247,11 +255,15 @@ export class DeviceSession {
   /** A cheap, side-effect-free GET used as a liveness check. Never throws; returns false on timeout. */
   async probe(timeoutMs: number): Promise<boolean> {
     try {
-      await this.requestOnce(DeviceId.ULTRASONIC, [this.profile.ultrasonicPort ?? DEFAULT_ULTRASONIC_PORT], timeoutMs);
+      await this.requestVersion(timeoutMs);
       return true;
     } catch {
       return false;
     }
+  }
+
+  private async requestVersion(timeoutMs: number): Promise<Uint8Array> {
+    return this.requestOnce(DeviceId.VERSION, [], timeoutMs);
   }
 
   /** Toggles DTR to pulse the bootloader's auto-reset line. See plan §9, step 4. */
@@ -317,6 +329,10 @@ export class DeviceSession {
   private handleData(bytes: Uint8Array): void {
     const frames = this.parser.push(bytes);
     for (const frame of frames) {
+      // A bare RUN/RESET/START acknowledgement carries no index at all (see the
+      // confidence note in MakeblockProtocol.ts) - there is nothing to correlate it
+      // to, so it is intentionally dropped here rather than escalated as an error.
+      if (frame.index === null) continue;
       const waiter = this.pending.get(frame.index);
       if (!waiter) continue; // stray or late reply - not escalated as an error
       this.pending.delete(frame.index);
