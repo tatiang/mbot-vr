@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Arena, ProjectFile, ProjectSettings, RunState } from './types';
+import { isHardwareFeatureEnabled } from './device/featureFlag';
+import { DiagnosticLog } from './diagnostics/DiagnosticLog';
 import { SimulationEngine } from './simulation/SimulationEngine';
 import { ProgramRunner } from './runtime/ProgramRunner';
 import { createEngineRuntime } from './runtime/RobotRuntimeBridge';
@@ -46,6 +48,18 @@ type Tab = 'blocks' | 'javascript';
 type StackedPane = 'left' | 'right' | 'both';
 
 const NEW_PROJECT_NAME = 'My mBot program';
+/** Matches the badge in Toolbar.tsx. Duplicated rather than imported from package.json
+ *  so the build does not need a module outside src/ - see src/device/featureFlag.ts
+ *  for the flag this version number is logged alongside. */
+const APP_VERSION = '1.2.0';
+
+/**
+ * The physical-robot feature, loaded only when a student has turned it on (see
+ * `isHardwareFeatureEnabled`). `React.lazy` is what makes "off" mean "never
+ * downloaded" - Vite code-splits this and everything it imports from `src/device/*`
+ * into a separate chunk that a simulator-only session never requests.
+ */
+const DeviceSection = lazy(() => import('./components/DeviceSection').then((m) => ({ default: m.DeviceSection })));
 
 export default function App() {
   // --- one-time engine + runner setup --------------------------------------
@@ -81,6 +95,14 @@ export default function App() {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+
+  // --- physical robot (see docs/hardware-bridge-plan.md) -------------------
+  //
+  // The diagnostic log is created unconditionally - it is useful even with no robot
+  // ever attached, and it is the on-by-default part of the feature (see §15's phase
+  // table). `DeviceSection` itself is the part gated by the flag and lazy-loaded.
+  const [diagnosticLog] = useState(() => new DiagnosticLog(APP_VERSION));
+  const [hardwareEnabled] = useState(isHardwareFeatureEnabled);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [historyTick, setHistoryTick] = useState(0);
 
@@ -788,6 +810,19 @@ export default function App() {
           <Collapsible title="Challenge" defaultOpen>
             <ChallengePanel engine={engine} playgroundId={playgroundId} />
           </Collapsible>
+
+          {hardwareEnabled && (
+            <Suspense fallback={<Collapsible title="My robot"><p className="hint-text">Loading…</p></Collapsible>}>
+              <DeviceSection
+                getWorkspace={() => workspaceRef.current?.getWorkspace() ?? null}
+                onHighlight={(blockId) => workspaceRef.current?.highlight(blockId)}
+                pushToast={pushToast}
+                diagnosticLog={diagnosticLog}
+                appVersion={APP_VERSION}
+                refreshToken={historyTick}
+              />
+            </Suspense>
+          )}
 
           <Collapsible title="Robot setup">
             <RobotSetup

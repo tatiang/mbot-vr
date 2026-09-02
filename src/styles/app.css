@@ -834,3 +834,155 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .setup__row { grid-template-columns: auto 1fr auto; }
   .setup__slider { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ==========================================================================
+   Physical robot panel (connect, preflight, diagnostics)
+   See docs/hardware-bridge-plan.md. Off by default behind a feature flag, so
+   these rules are inert dead weight for a student who never turns it on -
+   deliberately kept small for that reason.
+   ========================================================================== */
+
+.device-panel {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-panel__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.device-panel__status {
+  padding: 10px 12px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.device-panel__question {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.device-panel__connected {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  margin: 0;
+  color: var(--ok);
+}
+
+.device-panel__error {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--stop);
+  margin: 0;
+}
+
+.stop-banner {
+  margin: 0 12px 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: #fdecea;
+  border: 1px solid #f0b4ad;
+  color: #7f2019;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13.5px;
+}
+
+.stop-banner strong { font-size: 14.5px; }
+
+.stop-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preflight-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preflight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.preflight-item--blocking { background: #fdecea; border-color: #f0b4ad; }
+.preflight-item--warning { background: #fbf3e3; border-color: #eccf95; }
+.preflight-item--note { background: var(--panel-2); }
+
+.preflight-item__badge {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.preflight-item__text { flex: 1 1 auto; color: var(--ink-2); }
+
+.diagnostics { padding: 10px 12px 12px; }
+
+.diagnostics__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.diagnostics__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.diagnostics__event {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.diagnostics__time { font-family: var(--mono); color: var(--ink-3); }
+.diagnostics__message { color: var(--ink); }
+.diagnostics__code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--stop);
+  background: #fdecea;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.diagnostics__detail {
+  flex-basis: 100%;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}

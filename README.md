@@ -526,6 +526,28 @@ The suite covers the logic that would be expensive to get wrong:
 
 ---
 
+## Physical mBot connection (experimental, off by default)
+
+Early, unverified work toward driving a **real** mBot v1.x from this app over USB or
+Bluetooth (via Web Serial) lives behind a feature flag - the classroom app above is
+completely unaffected by it, and none of its code is downloaded unless the flag is on.
+
+- **Turn it on:** open the app with `?hardware=1` in the URL (Chrome or Edge only), or
+  `localStorage.setItem('mbotvr.hardware.enabled', '1')`.
+- **What works today:** connecting, identifying a robot with a "wink" confirmation so
+  you don't send to the wrong one, a stop button whose ladder only ever claims "stopped"
+  once the robot has actually confirmed it, running the current blocks tethered to a
+  physical robot, and a diagnostic log for troubleshooting.
+- **What doesn't exist yet:** untethered/flashed programs, an Arduino-export fallback
+  for Safari/Firefox, and - critically - **validation against a real robot**. The
+  protocol implementation is built from Makeblock's own published firmware source, but
+  no physical mBot was available while writing it.
+
+Full design rationale, the safety reasoning behind the stop mechanism, and exactly
+what remains open: [`docs/hardware-bridge-plan.md`](./docs/hardware-bridge-plan.md).
+
+---
+
 ## Roadmap
 
 - Multiple event hats and parallel scripts
