@@ -25,6 +25,8 @@ export interface DeviceProfile {
   nickname: string | null;
   firmwareVersion: string | null;
   protocolVersion: string | null;
+  /** True only for the custom Player firmware that can store bytecode in EEPROM. */
+  supportsOnRobotPrograms: boolean;
   /** RJ25 port (1-4) the ultrasonic sensor answers on, or null if not confirmed. */
   ultrasonicPort: number | null;
   /** RJ25 port (1-4) the line-follower module answers on, or null if not confirmed. */
@@ -39,6 +41,7 @@ export const UNKNOWN_DEVICE_PROFILE: DeviceProfile = {
   nickname: null,
   firmwareVersion: null,
   protocolVersion: null,
+  supportsOnRobotPrograms: false,
   ultrasonicPort: null,
   lineFollowerPort: null,
   hasDisplay: false,

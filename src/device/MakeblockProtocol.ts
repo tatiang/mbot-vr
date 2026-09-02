@@ -56,6 +56,18 @@ export const DeviceId = {
   MOTOR: 10,
   SERVO: 11,
   LINE_FOLLOWER: 17,
+  /** Reserved for mBot VR Player firmware EEPROM bytecode operations. */
+  PLAYER: 0x7d,
+} as const;
+
+/** Subcommands for the custom Player firmware device id. */
+export const PlayerCommand = {
+  INFO: 0x01,
+  BEGIN_PROGRAM_WRITE: 0x10,
+  WRITE_PROGRAM_CHUNK: 0x11,
+  COMMIT_PROGRAM: 0x12,
+  VERIFY_PROGRAM: 0x13,
+  SET_BOOT_IDLE: 0x20,
 } as const;
 
 /**
@@ -191,6 +203,10 @@ export function encodeUltrasonicGet(index: number, port: number): Uint8Array {
 
 export function encodeLineFollowerGet(index: number, port: number): Uint8Array {
   return encodeGet(index, DeviceId.LINE_FOLLOWER, [port]);
+}
+
+export function encodePlayerGet(index: number, command: number, params: number[] = []): Uint8Array {
+  return encodeGet(index, DeviceId.PLAYER, [command, ...params]);
 }
 
 function int16LE(value: number): [number, number] {

@@ -91,6 +91,11 @@ export function encodeFloatReply(index: number, value: number): Uint8Array {
   return new Uint8Array([0xff, 0x55, index & 0xff, 2, ...floatBytes, ...CRLF]);
 }
 
+/** A `GET` reply carrying one BYTE value, used by the Player firmware command tests. */
+export function encodeByteReply(index: number, value: number): Uint8Array {
+  return new Uint8Array([0xff, 0x55, index & 0xff, 1, value & 0xff, ...CRLF]);
+}
+
 /** A `GET` reply carrying a `STRING` (type 4) value - what the `VERSION` GET returns. */
 export function encodeStringReply(index: number, text: string): Uint8Array {
   const chars = Array.from(text, (c) => c.charCodeAt(0) & 0xff);
