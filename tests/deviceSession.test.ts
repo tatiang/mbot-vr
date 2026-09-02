@@ -25,6 +25,33 @@ describe('DeviceSession.identify', () => {
     expect(statuses).toContain('confirmingIdentity');
   });
 
+  it('logs a hex preview of raw bytes received while not yet identified', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake);
+    const logs: Array<{ message: string; detail?: string }> = [];
+    const session = new DeviceSession(fake.link, 'usb', { onLog: (e) => logs.push(e) });
+
+    await session.identify();
+
+    const raw = logs.find((e) => e.message === 'Raw bytes received');
+    expect(raw).toBeTruthy();
+    expect(raw?.detail).toMatch(/^\[\d+B\] ([0-9a-f]{2} ?)+/);
+  });
+
+  it('stops logging raw bytes once identity is confirmed', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake);
+    const logs: Array<{ message: string }> = [];
+    const session = new DeviceSession(fake.link, 'usb', { onLog: (e) => logs.push(e) });
+    await session.identify();
+    session.confirmIdentity();
+    logs.length = 0;
+
+    await session.getUltrasonicPayload();
+
+    expect(logs.some((e) => e.message === 'Raw bytes received')).toBe(false);
+  });
+
   it('captures the firmware version string reported by the VERSION GET', async () => {
     const fake = createFakeLink();
     autoRespond(fake, '06.01.009');

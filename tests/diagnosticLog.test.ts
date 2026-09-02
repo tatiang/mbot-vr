@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiagnosticLog } from '../src/diagnostics/DiagnosticLog';
 import { DeviceError } from '../src/device/types';
 
@@ -31,8 +31,19 @@ class MemoryStorage implements Storage {
 const storage = new MemoryStorage();
 globalThis.sessionStorage = storage;
 
+// Fake timers for the whole file: DiagnosticLog debounces its sessionStorage write by
+// 300ms of *real* time, and several tests below never wait for (or care about) that
+// write. Without fake timers, that pending setTimeout can survive past the end of its
+// own test and fire during a *later* one, clobbering the shared `storage` with a stale
+// snapshot - real, observed flakiness this exact way. `vi.useRealTimers()` in
+// `afterEach` discards any timer a test left pending rather than letting it fire late.
 beforeEach(() => {
   storage.clear();
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('DiagnosticLog', () => {

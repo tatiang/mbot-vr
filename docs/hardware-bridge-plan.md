@@ -887,6 +887,58 @@ a human with actual hardware to surface it. This is the first of the plan's "unv
 until tested" claims to be confirmed and corrected against real hardware, and the
 confidence note at the top of `MakeblockProtocol.ts` has been rewritten accordingly.
 
+### Second and third rounds: port confusion, and a reset-timing hypothesis
+
+Two more real-hardware rounds followed, each surfacing something the first fix didn't
+cover:
+
+- **The port picker was showing every serial-capable device on the machine** -
+  Bluetooth-paired earbuds, a debug console, an unrelated USB device - alongside the
+  mBot's two duplicate driver entries (macOS commonly exposes one CH340-family adapter
+  through both its own built-in driver and a separately-installed WCH one). Chrome's
+  port chooser is native OS UI the page cannot rename or rank entries inside, but
+  `requestPort()`'s `filters` option can narrow it before it opens.
+  `SerialTransport.ts` now filters a USB request to vendor id `0x1A86` (WCH) by
+  default, with a "my robot isn't listed" fallback that requests with no filter.
+  Separately, a real bug was found and fixed in the same round: a failed connection
+  attempt (e.g. `identify()` timing out on an already-opened port) never closed that
+  port, so the *next* attempt failed with `ERR_PORT_BUSY` against a port only the
+  previous, already-failed attempt was still holding - `useDeviceSession.connect()`
+  now disposes the session in its `catch` block.
+- **A reset-timing hypothesis, not yet confirmed.** `ERR_NO_REPLY` persisted even with
+  the port narrowed correctly. Arduino Uno-compatible boards - the mCore included -
+  are documented to auto-reset when a serial connection opens (a DTR-line capacitor
+  turns the port-open handshake into a reset pulse, the same mechanism behind the
+  Arduino IDE's own Serial Monitor resetting a board on open). `identify()` was
+  probing immediately after `port.open()` succeeded, which could mean probing a board
+  still mid-reboot. A 2-second settle period was added between opening the port and
+  the first probe. **This is a plausible, well-documented cause, not a confirmed one**
+  - unlike the framing bug above, it has not yet been proven against this specific
+    hardware by a passing connection afterward.
+- **A cross-check against Makeblock's own official client.** To look for a reference
+  implementation of the reset-timing problem, `Makeblock-official/mBlock` (the older,
+  Scratch-2.0-based mBlock 3/4 client - Electron + ActionScript, not the same codebase
+  as mBlock 5) was read directly. Two useful, concrete outcomes:
+  - **No reference implementation exists to borrow.** That client's `app/serial.js`
+    considers a connection "ready" the instant the OS reports the port open, with no
+    protocol-level handshake at all (confirmed by `grep`-ing the whole source tree for
+    any firmware version check - only the app's own auto-updater has one). It simply
+    does not handle this timing issue; it is not that they solved it differently.
+  - **The reply-parsing byte format is now cross-checked against a second,
+    independent, official source** (`src/cc/makeblock/interpreter/PacketParser.as`),
+    and matches this app's implementation for every reply type it actually uses
+    (`FLOAT` for ultrasonic/line-follower, `STRING` for `VERSION`). It also caught a
+    real internal inconsistency *within Makeblock's own mBlock repo* - the bundled
+    firmware's `sendShort`/`sendDouble` claim 4 and 8 bytes, but the bundled client
+    reads `SHORT` as 2 bytes and treats `DOUBLE` identically to `FLOAT` (4 bytes); a
+    `grep` confirmed neither `sendShort` nor `sendDouble` is ever actually called by
+    that firmware, so the mismatch has evidently never mattered in practice. This
+    app's `ReplyType` byte lengths now follow the client's behaviour, and a `RawFrame`
+    now carries the type byte plus raw hex-preview logging of every unidentified
+    connection's incoming bytes (`DeviceSession`'s "Raw bytes received" log entries),
+    so the next hardware round produces direct evidence - what actually arrived on the
+    wire - rather than another hypothesis to test blind.
+
 ### What is explicitly not built
 
 - **Player firmware, EEPROM program storage, the flash-once workflow (Tier 2 /

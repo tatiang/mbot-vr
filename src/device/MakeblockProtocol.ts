@@ -71,13 +71,30 @@ export const LedSlot = {
   ALL: 2,
 } as const;
 
-/** Type-code byte a GET reply's data is tagged with (`sendByte`/`sendFloat`/etc.). */
+/**
+ * Type-code byte a GET reply's data is tagged with (`sendByte`/`sendFloat`/etc.).
+ * `BYTE`, `FLOAT` and `STRING` are the only ones this app's own device methods
+ * currently produce or parse (ultrasonic/line-follower use `FLOAT`; `VERSION` uses
+ * `STRING`) and are confirmed against two independent official sources: Makeblock's
+ * standalone factory-firmware repo and the client+firmware pair bundled together in
+ * `Makeblock-official/mBlock`. `SHORT` and `DOUBLE` are a genuine, if academic,
+ * inconsistency *within Makeblock's own mBlock repo*: its bundled firmware's
+ * `sendShort`/`sendDouble` write 4 and 8 bytes respectively, but its own client
+ * (`PacketParser.as`) reads `SHORT` as 2 bytes and treats `DOUBLE` identically to
+ * `FLOAT` (4 bytes) - and neither `sendShort` nor `sendDouble` is ever actually called
+ * anywhere in that firmware, so the mismatch has evidently never mattered in practice.
+ * The lengths below follow the *client's* behaviour, on the theory that a real,
+ * shipped, working app is the more trustworthy source when the two disagree. `INT` (6)
+ * appears only in the client's parser, with no corresponding firmware sender found;
+ * included for forward compatibility.
+ */
 export const ReplyType = {
   BYTE: 1,
   FLOAT: 2,
   SHORT: 3,
   STRING: 4,
   DOUBLE: 5,
+  INT: 6,
 } as const;
 
 const MAX_INDEX = 0xff;
@@ -165,9 +182,11 @@ function fixedDataLength(type: number): number | null {
     case ReplyType.FLOAT:
       return 4;
     case ReplyType.SHORT:
-      return 4; // despite the name - see the confidence note at the top of this file
+      return 2; // matches the official client, not the (unreachable) firmware sender - see the confidence note above
     case ReplyType.DOUBLE:
-      return 8;
+      return 4; // ditto - the client treats DOUBLE identically to FLOAT
+    case ReplyType.INT:
+      return 4;
     default:
       return null;
   }

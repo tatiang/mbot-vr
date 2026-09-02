@@ -206,3 +206,37 @@ describe('decodeInt16LE / decodeFloatLE', () => {
     expect(decodeFloatLE(bytes)).toBeCloseTo(17.5, 5);
   });
 });
+
+// Byte lengths per reply type, cross-checked against Makeblock's own official client
+// (PacketParser.as in Makeblock-official/mBlock) rather than the firmware source alone -
+// see the confidence note on `ReplyType` in MakeblockProtocol.ts for why the two
+// disagree on SHORT/DOUBLE and which one this app follows.
+describe('FrameParser reply type byte lengths', () => {
+  it('reads a SHORT (type 3) reply as 2 data bytes, matching the official client', () => {
+    const parser = new FrameParser();
+    // FF 55 idx type dataLo dataHi CRLF - 8 bytes total, per PacketParser.as's splice(0, 8).
+    const frame = new Uint8Array([0xff, 0x55, 7, ReplyType.SHORT, 0x2c, 0x01, 0x0d, 0x0a]);
+    const [reply] = parser.push(frame);
+    expect(reply.type).toBe(ReplyType.SHORT);
+    expect(reply.payload).toHaveLength(2);
+  });
+
+  it('reads a DOUBLE (type 5) reply the same as FLOAT: 4 data bytes', () => {
+    const floatBytes = new Uint8Array(4);
+    new DataView(floatBytes.buffer).setFloat32(0, 10, true);
+    const frame = new Uint8Array([0xff, 0x55, 3, ReplyType.DOUBLE, ...floatBytes, 0x0d, 0x0a]);
+    const parser = new FrameParser();
+    const [reply] = parser.push(frame);
+    expect(reply.type).toBe(ReplyType.DOUBLE);
+    expect(reply.payload).toHaveLength(4);
+    expect(decodeFloatLE(reply.payload)).toBeCloseTo(10, 4);
+  });
+
+  it('reads an INT (type 6) reply as 4 data bytes', () => {
+    const parser = new FrameParser();
+    const frame = new Uint8Array([0xff, 0x55, 9, ReplyType.INT, 1, 0, 0, 0, 0x0d, 0x0a]);
+    const [reply] = parser.push(frame);
+    expect(reply.type).toBe(ReplyType.INT);
+    expect(reply.payload).toHaveLength(4);
+  });
+});

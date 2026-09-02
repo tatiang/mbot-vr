@@ -37,6 +37,16 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const HEX_PREVIEW_MAX_BYTES = 32;
+
+/** A short, log-friendly hex dump - protocol bytes, never anything student-identifying. */
+function hexPreview(bytes: Uint8Array): string {
+  const shown = bytes.length > HEX_PREVIEW_MAX_BYTES ? bytes.subarray(0, HEX_PREVIEW_MAX_BYTES) : bytes;
+  const hex = Array.from(shown, (b) => b.toString(16).padStart(2, '0')).join(' ');
+  const suffix = bytes.length > HEX_PREVIEW_MAX_BYTES ? ` … (+${bytes.length - HEX_PREVIEW_MAX_BYTES} more bytes)` : '';
+  return `[${bytes.length}B] ${hex}${suffix}`;
+}
+
 /**
  * Owns one open serial link to a robot and everything session-scoped about it: the
  * connect/identify state machine, request/reply correlation, and the actuator/sensor
@@ -327,6 +337,16 @@ export class DeviceSession {
   }
 
   private handleData(bytes: Uint8Array): void {
+    // While still connecting, log a hex preview of every chunk that arrives - even one
+    // that fails to parse into a frame. This is the single most useful piece of
+    // evidence for diagnosing a connection failure remotely: it distinguishes "the
+    // robot never sent anything" (still resetting, wrong port, no factory firmware)
+    // from "it replied and this app misparsed it" (a real parser bug) without needing
+    // physical access to the hardware. Not logged once identity is confirmed, so
+    // ordinary operation does not spam the log with per-command chatter.
+    if (!this.identityConfirmed) {
+      this.callbacks.onLog?.({ message: 'Raw bytes received', detail: hexPreview(bytes) });
+    }
     const frames = this.parser.push(bytes);
     for (const frame of frames) {
       // A bare RUN/RESET/START acknowledgement carries no index at all (see the
