@@ -21,7 +21,7 @@ import { classifyError } from '../diagnostics/taxonomy';
 export interface DeviceSessionController {
   status: ConnectionStatus;
   capabilities: DeviceCapabilities;
-  connect: (kind: LinkKind) => Promise<void>;
+  connect: (kind: LinkKind, options?: { showAllPorts?: boolean }) => Promise<void>;
   confirmIdentity: () => void;
   rejectIdentity: () => void;
   disconnect: () => void;
@@ -46,10 +46,10 @@ export function useDeviceSession(log: DiagnosticLog): DeviceSessionController {
   }, []);
 
   const connect = useCallback(
-    async (kind: LinkKind) => {
+    async (kind: LinkKind, options: { showAllPorts?: boolean } = {}) => {
       setStatus({ phase: 'requestingPermission', link: kind });
       try {
-        const port = await requestSerialPort(kind);
+        const port = await requestSerialPort(kind, options);
         setStatus({ phase: 'opening', link: kind });
         const link = await openSerialLink(port);
         const session = new DeviceSession(link, kind, {
@@ -61,6 +61,11 @@ export function useDeviceSession(log: DiagnosticLog): DeviceSessionController {
         await session.wink();
       } catch (error) {
         log.logError('Could not connect to a robot', error);
+        // The port may already be open (e.g. identify() timed out after a successful
+        // open) - release it now, or the *next* attempt fails with ERR_PORT_BUSY
+        // against a port only this failed attempt is still holding.
+        sessionRef.current?.dispose();
+        sessionRef.current = null;
         const code = classifyError(error).code;
         setStatus({ phase: 'error', code, link: kind });
       }

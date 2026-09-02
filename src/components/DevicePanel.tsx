@@ -5,7 +5,7 @@ import { RobotIcon } from './icons';
 interface Props {
   status: ConnectionStatus;
   capabilities: DeviceCapabilities;
-  onConnect: (kind: LinkKind) => void;
+  onConnect: (kind: LinkKind, options?: { showAllPorts?: boolean }) => void;
   onConfirmIdentity: () => void;
   onRejectIdentity: () => void;
   onWinkAgain: () => void;
@@ -72,6 +72,13 @@ export function DevicePanel({
           <p className="hint-text" style={{ textAlign: 'left' }}>
             Only driving the robot works wirelessly - putting a program on it needs the cable.
           </p>
+          <button
+            type="button"
+            className="btn btn--sm btn--ghost"
+            onClick={() => onConnect('usb', { showAllPorts: true })}
+          >
+            My robot isn't listed - show every port
+          </button>
         </div>
       );
 

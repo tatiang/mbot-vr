@@ -11,6 +11,20 @@ import { DeviceError, type LinkKind } from './types';
 const SPP_SERVICE_CLASS_ID = '00001101-0000-1000-8000-00805f9b34fb';
 
 /**
+ * USB vendor id for WCH (Nanjing Qinheng Microelectronics), maker of the CH340/CH341
+ * chip the mCore board uses for its USB-serial bridge (see
+ * `docs/hardware-bridge-plan.md` §3, source 1-2). Passed as a `filters` entry when a
+ * student chooses "Plugged in with a cable", so Chrome's port chooser shows only
+ * WCH-made adapters instead of every serial-capable device the OS knows about - on a
+ * real machine that list can include Bluetooth-paired earbuds, a debug console, and
+ * other USB-serial gadgets with no relation to the robot, which is exactly what caused
+ * real confusion during hardware testing on 2 September 2026. A vendor filter (rather
+ * than vendor+product) still shows both CH340 (product 0x7523) and CH341
+ * (product 0x5523) variants.
+ */
+const WCH_USB_VENDOR_ID = 0x1a86;
+
+/**
  * The narrow surface `DeviceSession` needs from a serial connection.
  *
  * Keeping this as an interface - rather than passing a raw `SerialPort` around - is
@@ -36,15 +50,27 @@ export interface SerialLink {
  */
 export const SERIAL_BAUD_RATE = 115200;
 
-/** Throws `ERR_BROWSER_UNSUPPORTED` in any environment without Web Serial. */
-export async function requestSerialPort(kind: LinkKind = 'usb'): Promise<SerialPort> {
+/**
+ * Throws `ERR_BROWSER_UNSUPPORTED` in any environment without Web Serial. By default a
+ * USB request is filtered to WCH (CH340/CH341) devices - pass `showAllPorts: true` for
+ * the "not listed? show all ports" fallback, so a robot on genuinely different
+ * USB-serial hardware is never permanently hidden by the filter.
+ */
+export async function requestSerialPort(
+  kind: LinkKind = 'usb',
+  options: { showAllPorts?: boolean } = {},
+): Promise<SerialPort> {
   if (typeof navigator === 'undefined' || !navigator.serial) {
     throw new DeviceError('ERR_BROWSER_UNSUPPORTED', 'This browser has no navigator.serial.');
   }
+  const requestOptions: SerialPortRequestOptions | undefined =
+    kind === 'bluetooth'
+      ? { allowedBluetoothServiceClassIds: [SPP_SERVICE_CLASS_ID] }
+      : options.showAllPorts
+        ? undefined
+        : { filters: [{ usbVendorId: WCH_USB_VENDOR_ID }] };
   try {
-    return await navigator.serial.requestPort(
-      kind === 'bluetooth' ? { allowedBluetoothServiceClassIds: [SPP_SERVICE_CLASS_ID] } : undefined,
-    );
+    return await navigator.serial.requestPort(requestOptions);
   } catch (error) {
     if (error instanceof DOMException && error.name === 'NotFoundError') {
       throw new DeviceError('ERR_NO_PORT_SELECTED', 'The port chooser was dismissed.', error);
