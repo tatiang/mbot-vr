@@ -58,17 +58,37 @@ export const DeviceId = {
   LINE_FOLLOWER: 17,
 } as const;
 
-/** Conventional mBot motor port numbers. See the confidence note above. */
+/**
+ * mBot motor port numbers - confirmed against `Makeblock-official/mBlock`'s own
+ * `mbot.js` (`ports.M1 = 9, ports.M2 = 10`), the same client used to find the two bugs
+ * these constants are now paired with: see `encodeMotorRun` below for the `M1`/port-9
+ * sign flip that real hardware testing (2 September 2026) showed this app was missing.
+ */
 export const MotorPort = {
   LEFT: 9,
   RIGHT: 10,
 } as const;
 
-/** RGB LED "slot" the firmware's RUN command expects: 0 = left, 1 = right, 2 = both. */
-export const LedSlot = {
-  LEFT: 0,
+/**
+ * The onboard RGB LEDs are addressed as if they were an LED strip module wired to a
+ * fixed "port" - confirmed against `mbot.js`'s `runLed`, which always calls
+ * `runLedStrip(7, 2, ledIndex, ...)` for the onboard LEDs. `ONBOARD_LED_PORT` and
+ * `LED_STRIP_SLOT` are both constants, not configurable per call.
+ */
+export const ONBOARD_LED_PORT = 7;
+const LED_STRIP_SLOT = 2;
+
+/**
+ * Which onboard LED(s) a `RUN` command addresses - confirmed against `mbot.js`'s
+ * `runLedStrip` (`"all" -> 0`) and `runLed` (`"led right" -> 1, "led left" -> 2`).
+ * An earlier version of this file had this backwards (0 = left, 2 = all), which -
+ * combined with sending the wrong number of parameters entirely (see `encodeRgbLed`) -
+ * is why real hardware testing showed the LED blocks doing nothing at all.
+ */
+export const LedIndex = {
+  ALL: 0,
   RIGHT: 1,
-  ALL: 2,
+  LEFT: 2,
 } as const;
 
 /**
@@ -134,16 +154,35 @@ export function encodeVersionGet(index: number): Uint8Array {
   return encodeGet(index, DeviceId.VERSION, []);
 }
 
-/** One motor, one speed. `speed` is clamped to the runtime's -255..255 range. */
+/**
+ * One motor, one speed. `speed` is clamped to the runtime's -255..255 range.
+ *
+ * `M1` (the left motor, port 9) is physically mounted mirrored relative to `M2`, so the
+ * firmware's own notion of "positive" is inverted for that one port - confirmed against
+ * `mbot.js`'s `runMotor`: `if (port == 9) { speed = -speed; }`. Real hardware testing
+ * (2 September 2026) showed exactly this symptom before the fix: the left wheel spun
+ * backwards on a "move forward" block while the right wheel behaved correctly.
+ */
 export function encodeMotorRun(index: number, port: number, speed: number): Uint8Array {
-  const clamped = Math.max(-255, Math.min(255, Math.round(speed)));
+  const signed = port === MotorPort.LEFT ? -speed : speed;
+  const clamped = Math.max(-255, Math.min(255, Math.round(signed)));
   return encodeRun(index, DeviceId.MOTOR, [port, ...int16LE(clamped)]);
 }
 
-export function encodeRgbLed(index: number, slot: number, r: number, g: number, b: number): Uint8Array {
+/**
+ * Sets the onboard RGB LED(s). `ledIndex` selects which one - see `LedIndex` above.
+ *
+ * The parameter list is `[port, slot, ledIndex, r, g, b]` - six params, not the five an
+ * earlier version of this function sent - confirmed against `mbot.js`'s `runLedStrip`
+ * (`runPackage(8, port, slot, ledIndex, red, green, blue)`, called as
+ * `runLedStrip(7, 2, ledIndex, ...)` for the onboard LEDs specifically). Sending the
+ * wrong parameter count misaligns every byte the firmware reads after it, which is why
+ * real hardware testing showed the LED blocks doing nothing at all rather than lighting
+ * the wrong colour - the firmware was reading garbage, not a merely-wrong value.
+ */
+export function encodeRgbLed(index: number, ledIndex: number, r: number, g: number, b: number): Uint8Array {
   const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-  // Port 0: the onboard LEDs are wired directly to the board, not to an RJ25 port.
-  return encodeRun(index, DeviceId.RGB_LED, [0, slot, clamp(r), clamp(g), clamp(b)]);
+  return encodeRun(index, DeviceId.RGB_LED, [ONBOARD_LED_PORT, LED_STRIP_SLOT, ledIndex, clamp(r), clamp(g), clamp(b)]);
 }
 
 export function encodeUltrasonicGet(index: number, port: number): Uint8Array {

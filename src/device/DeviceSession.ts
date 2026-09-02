@@ -2,6 +2,7 @@ import type { SerialLink } from './SerialTransport';
 import {
   DeviceId,
   FrameParser,
+  LedIndex,
   decodeString,
   encodeGet,
   encodeMotorRun,
@@ -229,13 +230,13 @@ export class DeviceSession {
     await this.write(encodeMotorRun(this.nextIdx(), port, speed));
   }
 
-  async setRgbLed(slot: number, r: number, g: number, b: number): Promise<void> {
-    await this.write(encodeRgbLed(this.nextIdx(), slot, r, g, b));
+  async setRgbLed(ledIndex: number, r: number, g: number, b: number): Promise<void> {
+    await this.write(encodeRgbLed(this.nextIdx(), ledIndex, r, g, b));
   }
 
   /** Convenience: the wink sequence's "both LEDs" case. */
   private async sendRgbLed(r: number, g: number, b: number): Promise<void> {
-    await this.setRgbLed(2, r, g, b);
+    await this.setRgbLed(LedIndex.ALL, r, g, b);
   }
 
   /** RESET action - stops both motors and the buzzer on the firmware side. */

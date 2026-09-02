@@ -3,6 +3,9 @@ import {
   Action,
   DeviceId,
   FrameParser,
+  LedIndex,
+  MotorPort,
+  ONBOARD_LED_PORT,
   ReplyType,
   decodeFloatLE,
   decodeInt16LE,
@@ -65,34 +68,67 @@ describe('encodeMotorRun', () => {
   const speedBytes = (frame: Uint8Array) => frame.slice(7);
 
   it('encodes the port before the speed', () => {
-    const frame = encodeMotorRun(1, 9, 200);
-    expect(frame[6]).toBe(9);
+    const frame = encodeMotorRun(1, MotorPort.RIGHT, 200);
+    expect(frame[6]).toBe(MotorPort.RIGHT);
   });
 
-  it('round-trips a positive speed through int16LE', () => {
-    const frame = encodeMotorRun(1, 9, 200);
+  it('sends the right motor (M2) speed unflipped', () => {
+    const frame = encodeMotorRun(1, MotorPort.RIGHT, 200);
     expect(decodeInt16LE(speedBytes(frame))).toBe(200);
   });
 
-  it('round-trips a negative speed through int16LE', () => {
-    const frame = encodeMotorRun(1, 10, -180);
+  it('sends a negative right-motor speed unflipped', () => {
+    const frame = encodeMotorRun(1, MotorPort.RIGHT, -180);
     expect(decodeInt16LE(speedBytes(frame))).toBe(-180);
   });
 
-  it('clamps speed to the runtime -255..255 range', () => {
-    const high = encodeMotorRun(1, 9, 9000);
-    const low = encodeMotorRun(1, 9, -9000);
+  // M1 (the left motor, port 9) is physically mounted mirrored relative to M2 - see
+  // the confidence note on encodeMotorRun in MakeblockProtocol.ts. Real hardware
+  // testing (2 September 2026) showed this exact symptom before the fix: the left
+  // wheel spun backwards on a "move forward" block.
+  it('flips the left motor (M1) speed', () => {
+    const frame = encodeMotorRun(1, MotorPort.LEFT, 200);
+    expect(decodeInt16LE(speedBytes(frame))).toBe(-200);
+  });
+
+  it('flips a negative left-motor speed back to positive', () => {
+    const frame = encodeMotorRun(1, MotorPort.LEFT, -150);
+    expect(decodeInt16LE(speedBytes(frame))).toBe(150);
+  });
+
+  it('clamps speed to the runtime -255..255 range after flipping', () => {
+    const high = encodeMotorRun(1, MotorPort.RIGHT, 9000);
+    const low = encodeMotorRun(1, MotorPort.RIGHT, -9000);
     expect(decodeInt16LE(speedBytes(high))).toBe(255);
     expect(decodeInt16LE(speedBytes(low))).toBe(-255);
   });
 });
 
 describe('encodeRgbLed', () => {
-  it('clamps each channel to 0-255', () => {
-    const frame = encodeRgbLed(1, 2, -10, 999, 128);
-    // payload: [port(0), slot, r, g, b]
+  // Params start at byte 6: [port, slot, ledIndex, r, g, b] - six of them, not five;
+  // see the confidence note on encodeRgbLed in MakeblockProtocol.ts. Real hardware
+  // testing showed the earlier five-param version doing nothing at all, not just
+  // lighting the wrong colour - the firmware was reading misaligned garbage.
+  it('addresses the onboard LED port and strip slot, with the requested LED index', () => {
+    const frame = encodeRgbLed(1, LedIndex.ALL, 10, 20, 30);
     const payload = frame.slice(6);
-    expect(Array.from(payload)).toEqual([0, 2, 0, 255, 128]);
+    expect(Array.from(payload)).toEqual([ONBOARD_LED_PORT, 2, LedIndex.ALL, 10, 20, 30]);
+  });
+
+  it('clamps each colour channel to 0-255', () => {
+    const frame = encodeRgbLed(1, LedIndex.LEFT, -10, 999, 128);
+    const payload = frame.slice(6);
+    expect(Array.from(payload)).toEqual([ONBOARD_LED_PORT, 2, LedIndex.LEFT, 0, 255, 128]);
+  });
+
+  // Confirmed against mbot.js: runLedStrip's "all" -> 0; runLed's "led right" -> 1,
+  // "led left" -> 2. An earlier version of this file had 0 = left and 2 = all.
+  it.each([
+    ['ALL', LedIndex.ALL, 0],
+    ['RIGHT', LedIndex.RIGHT, 1],
+    ['LEFT', LedIndex.LEFT, 2],
+  ])('LedIndex.%s matches the official client (%i)', (_name, actual, expected) => {
+    expect(actual).toBe(expected);
   });
 });
 

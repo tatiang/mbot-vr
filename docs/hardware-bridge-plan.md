@@ -988,6 +988,44 @@ this now-working connection - identify only ever proved the `VERSION` GET round-
 correctly. Driving the robot with a real program and pressing **Stop** while it is
 moving are the two remaining "verified" claims this plan still owes real hardware.
 
+### Fifth round: Stop confirmed on real hardware; two more real bugs found and fixed
+
+**The stop ladder is now verified, not just planned.** With factory firmware restored,
+`STOP` pressed on a moving robot halted it immediately - the single most important
+untested claim in this entire plan (§9's evidence-gated escalation ladder) now has a
+real, positive result behind it.
+
+Driving the robot surfaced two further, genuine bugs - not hardware quirks this time,
+bugs in this app - found the same way as the protocol-framing bug in round one: by
+reading `Makeblock-official/mBlock`'s client source rather than guessing.
+
+- **The left motor spun backwards; the right motor never moved at all.** Two separate
+  causes: (1) `mbot.js`'s `runMotor` negates the speed sent to port 9 (`M1`, the left
+  motor) before sending - `if (port == 9) { speed = -speed; }` - because that motor is
+  physically mounted mirrored relative to `M2`. This app's `encodeMotorRun` never
+  applied that flip. (2) `SerialRobotRuntime.setMotors()` issues both wheels' writes via
+  `Promise.all`, and `SerialTransport`'s `write()` called `port.writable.getWriter()`
+  fresh on every write - which throws if the stream is already locked by a write still
+  in flight. One motor's command would go out; the other's write would silently fail. A
+  regression test now exercises this directly, against real `WritableStream`/
+  `ReadableStream` instances (not a plain mock, which couldn't reproduce the lock
+  behaviour) - see `tests/serialTransport.test.ts`.
+- **"Set both LEDs to red" did nothing at all**, not even the wrong colour - a clue that
+  the frame itself was malformed, not merely misinterpreted. `mbot.js`'s `runLedStrip`
+  sends six parameters (`port, slot, ledIndex, r, g, b`); this app's `encodeRgbLed` sent
+  five, permanently misaligning every byte the firmware read from that point on. It also
+  had the `ledIndex` values backwards (0 was treated as "left"; the real mapping,
+  confirmed against `mbot.js`, is `all=0, right=1, left=2`).
+
+All four fixes (motor sign flip, write serialization, the LED parameter count, and the
+`LedIndex` values) are covered by tests exercising the actual symptom, not just the
+corrected constant, and are live in production as of this round.
+
+**Remaining unverified:** ultrasonic and line-follower sensor reads, and the actual
+motor port wiring assumption (`MotorPort`'s values are now confirmed correct against
+`mbot.js`, but whether *this* fleet's ultrasonic/line-follower modules are physically on
+the assumed default ports 3 and 2 - U3/U7 - has not been tested).
+
 ### What is explicitly not built
 
 - **Player firmware, EEPROM program storage, the flash-once workflow (Tier 2 /

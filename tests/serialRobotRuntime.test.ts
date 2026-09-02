@@ -58,7 +58,7 @@ describe('createSerialRuntime', () => {
     expect(await runtime.isRightLineSensorOnLine()).toBe(expectedRight);
   });
 
-  it('setRgbLed maps left/right/all to the correct LED slot', async () => {
+  it('setRgbLed maps left/right/all to the correct LED index', async () => {
     const fake = createFakeLink();
     const runtime = createSerialRuntime(new DeviceSession(fake.link, 'usb'));
 
@@ -66,8 +66,10 @@ describe('createSerialRuntime', () => {
     await runtime.setRgbLed('right', 4, 5, 6);
     await runtime.setRgbLed('all', 7, 8, 9);
 
-    const slots = fake.writes.map((w) => w[7]); // header(2) len idx action device port slot
-    expect(slots).toEqual([0, 1, 2]);
+    // header(2) len idx action device port slot ledIndex - see MakeblockProtocol.ts's
+    // encodeRgbLed: port and slot are fixed constants, ledIndex is byte 8.
+    const ledIndexes = fake.writes.map((w) => w[8]);
+    expect(ledIndexes).toEqual([2, 1, 0]); // left=2, right=1, all=0 - matches mbot.js
   });
 
   it('getX / getY / getHeading / displayNumber reject as unsupported on hardware', async () => {

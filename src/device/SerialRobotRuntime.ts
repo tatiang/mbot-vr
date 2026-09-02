@@ -2,7 +2,7 @@ import type { LineFollowerValue } from '../types';
 import type { MbotRuntime } from '../runtime/RobotRuntimeBridge';
 import { decodeLineFollower } from '../simulation/LineSensor';
 import type { DeviceSession } from './DeviceSession';
-import { LedSlot, MotorPort, decodeFloatLE } from './MakeblockProtocol';
+import { LedIndex, MotorPort, decodeFloatLE } from './MakeblockProtocol';
 import { DeviceError } from './types';
 
 /**
@@ -72,8 +72,8 @@ export function createSerialRuntime(session: DeviceSession): MbotRuntime {
     },
 
     async setRgbLed(led, r, g, b) {
-      const slot = led === 'left' ? LedSlot.LEFT : led === 'right' ? LedSlot.RIGHT : LedSlot.ALL;
-      await session.setRgbLed(slot, r, g, b);
+      const ledIndex = led === 'left' ? LedIndex.LEFT : led === 'right' ? LedIndex.RIGHT : LedIndex.ALL;
+      await session.setRgbLed(ledIndex, r, g, b);
     },
     displayNumber: () => unsupported('The four-digit display'),
 

@@ -129,17 +129,31 @@ export async function openSerialLink(port: SerialPort): Promise<SerialLink> {
 
   void pump();
 
+  // Serializes every write onto this link. `WritableStream.getWriter()` throws if the
+  // stream is already locked, and `SerialRobotRuntime.setMotors()` genuinely does issue
+  // two writes concurrently (`Promise.all([setMotor(LEFT, ...), setMotor(RIGHT, ...)])`)
+  // - real hardware testing (2 September 2026) showed exactly the resulting symptom:
+  // one motor command went out and the other silently never did. `writeChain` is a
+  // simple FIFO: each write waits for the previous one to finish (successfully or not -
+  // the `.catch()` here keeps one failed write from permanently jamming every write
+  // after it) before acquiring the writer itself.
+  let writeChain: Promise<void> = Promise.resolve();
+
   return {
-    async write(bytes) {
-      if (!port.writable) {
-        throw new DeviceError('ERR_LINK_LOST', 'The port has no writable stream.');
-      }
-      const writer = port.writable.getWriter();
-      try {
-        await writer.write(bytes);
-      } finally {
-        writer.releaseLock();
-      }
+    write(bytes) {
+      const task = writeChain.then(async () => {
+        if (!port.writable) {
+          throw new DeviceError('ERR_LINK_LOST', 'The port has no writable stream.');
+        }
+        const writer = port.writable.getWriter();
+        try {
+          await writer.write(bytes);
+        } finally {
+          writer.releaseLock();
+        }
+      });
+      writeChain = task.catch(() => undefined);
+      return task;
     },
     onData(handler) {
       dataHandlers.add(handler);
