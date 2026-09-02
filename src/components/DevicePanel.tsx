@@ -115,11 +115,17 @@ export function DevicePanel({
     case 'running':
     case 'stopping':
     case 'stopUnconfirmed': {
-      const label = status.profile.nickname ?? 'Connected robot';
       return (
         <div className="device-panel">
           <p className="device-panel__connected">
-            <RobotIcon size={15} /> Connected to <strong>{label}</strong>
+            <RobotIcon size={15} />{' '}
+            {status.profile.nickname ? (
+              <>
+                Connected to <strong>{status.profile.nickname}</strong>
+              </>
+            ) : (
+              'Connected to your robot'
+            )}
           </p>
           <div className="device-panel__choices">
             <button type="button" className="btn btn--run" onClick={onRun} disabled={running || runDisabled}>

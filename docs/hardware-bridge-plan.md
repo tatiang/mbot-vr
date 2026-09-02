@@ -939,6 +939,55 @@ cover:
     so the next hardware round produces direct evidence - what actually arrived on the
     wire - rather than another hypothesis to test blind.
 
+### Fourth round: root cause found, and it wasn't in this app
+
+The raw-byte captures resolved it. Sending the `VERSION` GET probe by hand over
+`stty`/`printf`/`cat` - completely bypassing this app, the browser, and Web Serial
+entirely - got **zero valid protocol replies across 20 real seconds and 10 attempts**,
+which ruled out the reset-timing hypothesis outright (no bootloader window is anywhere
+near that long) and, combined with one more fact, pointed at the actual cause: the
+robot connected successfully in mBlock 5's web IDE "most of the time." Re-reading this
+app's own earlier source-code review of `Makeblock-official/mBlock`'s `app/serial.js`
+supplied the missing piece - that client marks a connection "connected" **the instant
+the OS reports the serial port open**, before a single protocol byte is exchanged. So
+"mBlock connects" was never evidence the robot was running protocol-compatible
+firmware; it only ever meant the port opened.
+
+The actual test that settled it: does the robot *do* anything when driven from
+mBlock? Answer - only after **uploading** a compiled program, which flashes a
+standalone Arduino sketch via the bootloader, a completely different mechanism from
+the live-streaming `0xFF 0x55` protocol. The robot's mCore was running whatever
+program a previous lesson had last uploaded to it - not Makeblock's live-mode
+"factory firmware" - so it had no code resident that understood or replied to a live
+command at all. This is precisely the risk this plan already flagged in principle
+(§16, "Robots have foreign firmware from previous lessons," and `ERR_FIRMWARE_UNKNOWN`
+in the taxonomy) but had no way to confirm without hardware.
+
+**Restoring factory firmware from mBlock 5 (Setting → Firmware Update → Factory
+Firmware → Update) fixed it completely** - the robot's startup now beeps three times
+(the factory firmware's own signature), the raw terminal probe gets a real reply, and
+**mBot VR connects successfully.** Every fix made in the rounds above (the reply-frame
+rewrite, the `VERSION`-based identify, the WCH vendor filter, the port-leak fix, the
+reset-settle delay) was real and necessary work - none of it was wasted - it simply
+could not matter until the firmware itself was correct. This is the first time in this
+plan's life that the phrase "unverified until tested" has fully resolved to
+**verified**: connect, identify, and the tethered live-drive pipeline (§6, Tier 1)
+now work against a real mBot v1.x.
+
+**A durable operational consequence, not just a historical note:** firmware state is
+per-robot and this is not a one-time fix. Any student who uploads a program to a
+robot via mBlock's Upload mode leaves it unable to talk to mBot VR (or mBlock's own
+live mode) until someone restores factory firmware again. A cart of robots shared
+across mBlock lessons and mBot VR sessions will need this checked routinely, and the
+teacher-facing help content (§7) should say so explicitly, not just handle it as an
+error state to react to.
+
+**Still open after this round:** the stop escalation ladder (§9) and the actual
+sensor/motor primitives (§6's per-method mapping) have not yet been exercised against
+this now-working connection - identify only ever proved the `VERSION` GET round-trips
+correctly. Driving the robot with a real program and pressing **Stop** while it is
+moving are the two remaining "verified" claims this plan still owes real hardware.
+
 ### What is explicitly not built
 
 - **Player firmware, EEPROM program storage, the flash-once workflow (Tier 2 /
