@@ -81,6 +81,35 @@ describe('encodeGet / encodeRun / encodeReset', () => {
   });
 });
 
+describe('Player command channel (contract with firmware/mbotvr-player + docs/player-protocol.md)', () => {
+  it('reserves a device id that cannot collide with a real Makeblock device', () => {
+    expect(DeviceId.PLAYER).toBe(0x7d);
+    const realDevices = [DeviceId.VERSION, DeviceId.ULTRASONIC, DeviceId.RGB_LED, DeviceId.MOTOR, DeviceId.SERVO, DeviceId.LINE_FOLLOWER];
+    expect(realDevices).not.toContain(DeviceId.PLAYER);
+  });
+
+  it('pins the sub-command byte values the firmware switches on', () => {
+    // Changing any of these means re-flashing every robot - lock them here so a casual
+    // edit fails CI instead of bricking the transfer path.
+    expect(PlayerCommand).toEqual({
+      INFO: 0x01,
+      BEGIN_PROGRAM_WRITE: 0x10,
+      WRITE_PROGRAM_CHUNK: 0x11,
+      COMMIT_PROGRAM: 0x12,
+      VERIFY_PROGRAM: 0x13,
+      SET_BOOT_IDLE: 0x20,
+    });
+  });
+
+  it('carries the sub-command as the first GET param, so every Player op is one indexed frame', () => {
+    const frame = encodePlayerGet(0x2a, PlayerCommand.BEGIN_PROGRAM_WRITE, [0x10, 0x00, 0x34, 0x12]);
+    expect(frame[3]).toBe(0x2a); // index - the firmware echoes it on the BYTE reply
+    expect(frame[4]).toBe(Action.GET);
+    expect(frame[5]).toBe(DeviceId.PLAYER);
+    expect(frame[6]).toBe(PlayerCommand.BEGIN_PROGRAM_WRITE);
+  });
+});
+
 describe('encodeMotorRun', () => {
   // Params start at byte 6: [port, speedLo, speedHi], so the speed itself is byte 7 on.
   const speedBytes = (frame: Uint8Array) => frame.slice(7);

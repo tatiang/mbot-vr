@@ -1072,14 +1072,69 @@ repo contains an Arduino sketch or exposes a flashing workflow. Because no firmw
 exists yet, this round does **not** prove untethered execution, EEPROM writes on real
 hardware, watchdog timing, or power-cycle behaviour.
 
+### Seventh round: the Player firmware sketch exists (from scratch, GPL-3.0-or-later), still unverified
+
+The two blocked product/legal decisions from §18 were put to the maintainer and answered
+(2026-09-03):
+
+1. **§18.3 firmware licensing - "from scratch, GPL-3.0-or-later."** The Player firmware
+   is authored against the publicly documented mCore pin map, contains no Makeblock
+   source, and is not derived from the GPLv2 Makeblock-Libraries. The whole repo tree
+   stays uniformly GPL-3.0-or-later with no license island.
+2. **§18.4 flashing access - "student-reachable from the run bar."** This *overrides* the
+   plan's earlier teacher-only / help-drawer recommendation. No flashing UI is built in
+   this round regardless; the decision only sets the target for when one is. The
+   safeguards the plan wanted around flashing (explicit confirm, re-flash rate limit,
+   keep the wink identity check, never on the stop path) still apply to that future UI.
+
+What landed:
+
+- **`firmware/mbotvr-player/mbotvr-player.ino`** - a single-file Arduino sketch for the
+  mCore (programmed as an "Arduino Uno"). It is a superset of the factory firmware's
+  behaviour for every command mBot VR's Tier-1 control uses (VERSION/ultrasonic/line
+  GETs, motor/RGB RUNs, RESET), plus: a bytecode VM interpreting the `PlayerOp` set
+  straight from EEPROM; the `0x7D` Player command channel (`INFO`,
+  `BEGIN/WRITE/VERIFY/COMMIT_PROGRAM`, `SET_BOOT_IDLE`) with correlated single-byte
+  replies; the EEPROM layout from the new spec (magic/version/flags/len/checksum header
+  written verbatim from the transferred blob, 128-byte reserved tail); atomic commit
+  (magic written last, so a power loss mid-transfer boots idle); and the host-heartbeat
+  watchdog - a host `MOTOR` RUN at non-zero speed arms it, `STOP`/`RESET`/zero-speed and
+  *any VM-issued motion* disarm it, and while armed a 500 ms gap with no valid frame
+  stops the motors. Two boot chirps distinguish it from factory firmware's three.
+- **`docs/player-protocol.md`** - the shared contract for the wire framing, the `0x7D`
+  sub-command channel, the EEPROM layout, the opcode table, and the watchdog rule.
+  Cross-referenced from both the sketch and the browser modules; a drift is meant to
+  fail CI (see the tests below). It also records one latent issue in the already-shipped
+  compiler: `READ_TIMER_DSEC` is emitted for `mbot_timer` in tenths of a second while
+  literal comparison operands are not scaled, so a stored `timer > 5` currently compares
+  tenths. The tethered path never touches that opcode; reconcile when the timer block is
+  promoted to a supported Tier-2 block.
+- **`tests/support/playerBytecode.ts` + `tests/playerBytecode.test.ts`** - an
+  independent disassembler/static validator (not a VM): it decodes the instruction
+  stream, checks every immediate fits, requires an `END` terminator, requires every jump
+  target to land on an instruction boundary, and runs a control-flow walk that assigns
+  each reachable instruction one consistent stack depth and catches underflow and
+  unbalanced branches. Run against every starter program and a set of hand-built
+  loop/branch cases, plus negative cases proving it rejects a missing `END`, a jump into
+  an immediate, an unbalanced branch, and an unknown opcode. `tests/makeblockProtocol.test.ts`
+  gained a block pinning `DeviceId.PLAYER` and the `PlayerCommand` byte values.
+
+**Unverified, as loudly as possible:** no line of the sketch has executed on a physical
+mBot. Pin numbers and polarities, the WS2812 bit-bang timing, the ultrasonic pulse
+timing, the line-sensor active level, and the real cable-pull halt latency are all
+transcribed design intent. `firmware/mbotvr-player/README.md` carries the bench-check
+matrix that has to pass before this is trusted. `npm run typecheck`, `npm run test`, and
+`npm run build` pass locally (TypeScript/build unaffected - the sketch is not part of
+the app bundle).
+
 ### What is explicitly not built
 
-- **Player firmware and the flash-once workflow (Tier 2 / Phase 5).** Browser-side
-  bytecode compilation, transfer, verification, and halt-flag commands exist, but no
-  Arduino sketch was written and no STK500 flashing code exists. This needs the
-  GPLv2/GPLv3 firmware decision, the teacher-only flashing access decision, an Arduino
-  build environment, and real hardware to validate watchdog timing and EEPROM
-  persistence.
+- **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now
+  exists (`firmware/mbotvr-player/`, from scratch, GPL-3.0-or-later) but is unverified on
+  hardware, and there is still no in-app way to write it to a board - `src/device/flash/`
+  does not exist. For now a teacher flashes it with the Arduino IDE or `arduino-cli` over
+  USB. Validating watchdog timing, EEPROM persistence, and power-cycle behaviour needs
+  real hardware.
 - **The Arduino-C export fallback (Phase 7).** Safari/Firefox users currently see the
   "open in Chrome or Edge" message with no export alternative yet.
 - **A device-profile UI** for a teacher to correct the assumed default port wiring

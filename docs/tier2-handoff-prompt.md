@@ -124,18 +124,33 @@ All confirmed against real hardware and/or Makeblock's own official client sourc
   whatever's there - think about what happens if a teacher wants to switch a robot
   back to plain mBlock use afterward.
 
-## Two decisions to get from the user (Tatian) before finalizing, not to assume
+## The two blocking decisions - ANSWERED (2026-09-03)
 
-1. **GPLv2/GPLv3 licensing for the Player firmware.** Makeblock's own firmware
-   source is GPLv2; this repo is GPL-3.0-or-later. Either build the Player firmware
-   from scratch against the mCore's public pin map (cleaner, keeps the whole tree
-   GPLv3, costs some extra time), or base it on Makeblock's GPLv2 code as a clearly
-   separated aggregate work with correct licensing notices. This is a real legal/
-   licensing call, not a technical one - ask rather than pick.
-2. **Who can flash firmware.** The plan recommends teacher-only, reachable from the
-   help drawer rather than the run bar, specifically to keep an irreversible-ish,
-   slightly risky action away from casual student use. Confirm this before shipping
-   a flashing UI students can reach unsupervised.
+1. **GPLv2/GPLv3 licensing for the Player firmware -> from scratch, GPL-3.0-or-later.**
+   `firmware/mbotvr-player/mbotvr-player.ino` is written against the public mCore pin
+   map, contains no Makeblock source, and is not derived from the GPLv2
+   Makeblock-Libraries. The repo tree stays uniformly GPL-3.0-or-later.
+2. **Who can flash firmware -> student-reachable from the run bar.** This overrides the
+   plan's teacher-only / help-drawer recommendation (`hardware-bridge-plan.md` §7, §18.4).
+   No flashing UI is built yet. When one is, keep: an explicit confirm step, a re-flash
+   rate limit, the wink identity check, and it must never sit on the emergency-stop path.
+
+## Progress since this handoff was written
+
+Done (2026-09-03, "seventh round" in `hardware-bridge-plan.md`), all **unverified on
+hardware**:
+
+- The Player firmware sketch itself: bytecode VM, the `0x7D` command channel matching
+  the browser's reserved `PlayerCommand` set, the EEPROM layout, atomic commit, and the
+  host-heartbeat watchdog. Single file, no libraries beyond the AVR core.
+- `docs/player-protocol.md` - the shared wire/EEPROM/opcode contract both sides follow.
+- `tests/support/playerBytecode.ts` + `tests/playerBytecode.test.ts` - a static
+  bytecode validator (jump-target boundaries, stack-balance across branches, END
+  terminator) run over every starter and negative cases.
+
+Still to do: the STK500v1 flashing path (`src/device/flash/`), surfacing `INFO` in the
+UI, the bench-check matrix in `firmware/mbotvr-player/README.md`, and the
+`READ_TIMER_DSEC` unit mismatch noted in `player-protocol.md` §4.
 
 ## A smaller, separate item worth doing first or alongside
 
