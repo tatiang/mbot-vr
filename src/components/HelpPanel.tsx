@@ -268,6 +268,19 @@ export function HelpPanel() {
         ones are ignored. A real mBot (and mBlock) can run more than one script at a time - that is
         planned here too, but is not built yet.
       </p>
+
+      <h3>Firmware</h3>
+      <p>
+        mBot VR cannot update or replace a robot's firmware from inside this web app yet. The
+        current robot connection expects Makeblock's factory firmware for live control; if a robot
+        was last used with mBlock Upload mode and does not answer here, restore it in mBlock 5:
+        open <strong>Setting</strong>, choose <strong>Firmware Update</strong>, choose{' '}
+        <strong>Factory Firmware</strong>, then press <strong>Update</strong>.
+      </p>
+      <p>
+        The future mBot VR Player firmware is still planned work. It needs a teacher-only flashing
+        tool and a final licensing decision before it can ship in this app.
+      </p>
     </div>
   );
 }
