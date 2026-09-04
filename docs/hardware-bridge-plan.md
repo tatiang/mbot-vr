@@ -1072,14 +1072,134 @@ repo contains an Arduino sketch or exposes a flashing workflow. Because no firmw
 exists yet, this round does **not** prove untethered execution, EEPROM writes on real
 hardware, watchdog timing, or power-cycle behaviour.
 
+### Seventh round: the Player firmware sketch exists (from scratch, GPL-3.0-or-later), still unverified
+
+The two blocked product/legal decisions from §18 were put to the maintainer and answered
+(2026-09-03):
+
+1. **§18.3 firmware licensing - "from scratch, GPL-3.0-or-later."** The Player firmware
+   is authored against the publicly documented mCore pin map, contains no Makeblock
+   source, and is not derived from the GPLv2 Makeblock-Libraries. The whole repo tree
+   stays uniformly GPL-3.0-or-later with no license island.
+2. **§18.4 flashing access - "student-reachable from the run bar."** This *overrides* the
+   plan's earlier teacher-only / help-drawer recommendation. No flashing UI is built in
+   this round regardless; the decision only sets the target for when one is. The
+   safeguards the plan wanted around flashing (explicit confirm, re-flash rate limit,
+   keep the wink identity check, never on the stop path) still apply to that future UI.
+
+What landed:
+
+- **`firmware/mbotvr-player/mbotvr-player.ino`** - a single-file Arduino sketch for the
+  mCore (programmed as an "Arduino Uno"). It is a superset of the factory firmware's
+  behaviour for every command mBot VR's Tier-1 control uses (VERSION/ultrasonic/line
+  GETs, motor/RGB RUNs, RESET), plus: a bytecode VM interpreting the `PlayerOp` set
+  straight from EEPROM; the `0x7D` Player command channel (`INFO`,
+  `BEGIN/WRITE/VERIFY/COMMIT_PROGRAM`, `SET_BOOT_IDLE`) with correlated single-byte
+  replies; the EEPROM layout from the new spec (magic/version/flags/len/checksum header
+  written verbatim from the transferred blob, 128-byte reserved tail); atomic commit
+  (magic written last, so a power loss mid-transfer boots idle); and the host-heartbeat
+  watchdog - a host `MOTOR` RUN at non-zero speed arms it, `STOP`/`RESET`/zero-speed and
+  *any VM-issued motion* disarm it, and while armed a 500 ms gap with no valid frame
+  stops the motors. Two boot chirps distinguish it from factory firmware's three.
+- **`docs/player-protocol.md`** - the shared contract for the wire framing, the `0x7D`
+  sub-command channel, the EEPROM layout, the opcode table, and the watchdog rule.
+  Cross-referenced from both the sketch and the browser modules; a drift is meant to
+  fail CI (see the tests below). It also records one latent issue in the already-shipped
+  compiler: `READ_TIMER_DSEC` is emitted for `mbot_timer` in tenths of a second while
+  literal comparison operands are not scaled, so a stored `timer > 5` currently compares
+  tenths. The tethered path never touches that opcode; reconcile when the timer block is
+  promoted to a supported Tier-2 block.
+- **`tests/support/playerBytecode.ts` + `tests/playerBytecode.test.ts`** - an
+  independent disassembler/static validator (not a VM): it decodes the instruction
+  stream, checks every immediate fits, requires an `END` terminator, requires every jump
+  target to land on an instruction boundary, and runs a control-flow walk that assigns
+  each reachable instruction one consistent stack depth and catches underflow and
+  unbalanced branches. Run against every starter program and a set of hand-built
+  loop/branch cases, plus negative cases proving it rejects a missing `END`, a jump into
+  an immediate, an unbalanced branch, and an unknown opcode. `tests/makeblockProtocol.test.ts`
+  gained a block pinning `DeviceId.PLAYER` and the `PlayerCommand` byte values.
+
+**Unverified, as loudly as possible:** no line of the sketch has executed on a physical
+mBot. Pin numbers and polarities, the WS2812 bit-bang timing, the ultrasonic pulse
+timing, the line-sensor active level, and the real cable-pull halt latency are all
+transcribed design intent. `firmware/mbotvr-player/README.md` carries the bench-check
+matrix that has to pass before this is trusted. `npm run typecheck`, `npm run test`, and
+`npm run build` pass locally (TypeScript/build unaffected - the sketch is not part of
+the app bundle).
+
+### Eighth round: first bench pass on the Player firmware — one real bug found and fixed, one likely false alarm
+
+First real-hardware attempt to flash and run `firmware/mbotvr-player/mbotvr-player.ino`
+(2026-09-03). Findings:
+
+- **Flashing failed with `avrdude`/`stk500_getsync` "not in sync"** against
+  `/dev/cu.usbserial-1120`; switching to the alternate device node for the same chip,
+  `/dev/cu.wchusbserial1120`, uploaded immediately. Root cause: macOS was exposing the
+  CH340 through two different drivers at once, each publishing its own port, and only
+  the WCH manufacturer driver's node reliably propagates the DTR toggle the mCore's
+  auto-reset circuit needs. This is a build-tooling gotcha, not a sketch bug — now
+  documented in `firmware/mbotvr-player/README.md`'s build steps.
+- **Connect and identify succeeded** after flashing: the app recognized the firmware as
+  `mBot VR Player v1` and enabled the storage controls, and the Stop ladder confirmed
+  correctly (a `VERSION` probe replies within the expected window). This proves the
+  `0xFF 0x55` framing and the Player command channel's basic request/reply path work on
+  real hardware.
+- **"Run on robot" produced no motor motion, and a stored program didn't appear to do
+  anything either.** Before treating this as a firmware bug, note that Stop confirming
+  does **not** prove motor actuation works — Stop's confirmation only depends on a
+  `VERSION` GET replying, and Stop's own motor commands are always speed-zero. A web
+  search cross-check independently confirmed this sketch's motor pin numbers
+  (M1 = D6 PWM/D7 DIR, M2 = D5 PWM/D4 DIR) against a public mCore writeup and
+  Makeblock's own mCore support page, so the pin map itself is now high-confidence, not
+  the likely cause. The much more likely explanation, not yet ruled out: the TB6612's
+  motor-supply rail is separate from the 5 V logic rail, and Makeblock's own
+  troubleshooting guide names exactly this failure mode ("mBot may not function
+  normally when not enough power is provided") — testing over USB alone, with the
+  battery pack off or flat, would produce exactly this symptom with no firmware bug at
+  all. Needs re-testing with the battery pack confirmed on before concluding otherwise.
+  Also note per §6/the design: storing a program with "Put this on my robot" does
+  **not** run it immediately by design — the VM only starts in `setup()`, so seeing no
+  effect right after a transfer is expected; the real test is after a power cycle.
+- **"Set both LEDs" not working was a real, confirmed firmware bug, now fixed.** The
+  original `ws2812Show()` was plain C with an `if`/`else` per bit; the compiler
+  tail-merged both branches' `*port = lo` write, which (verified by disassembling the
+  actual compiled sketch with `avr-objdump`, not by inspection alone) left only a
+  ~2-cycle/125 ns gap between a "0" bit's and a "1" bit's high time — almost certainly
+  too thin for a WS2812/SK6812 part to reliably tell apart, and a complete explanation
+  for "the LED block doesn't work." Rewritten as hand-counted inline assembly with an
+  11-cycle vs. 4-cycle high time (a 7-cycle/437.5 ns gap), and the fix was verified the
+  same way: disassembling the real compiled sketch again, not just eyeballing the
+  source. **Not yet re-tested against a real WS2812/SK6812 part or a scope** — the fix
+  is disassembly-verified, not hardware-verified.
+- Re-confirmed `npm run typecheck`/`test`/`build` unaffected (no TypeScript changed);
+  the sketch alone was re-compiled with `arduino-cli` (installed for this round) against
+  `arduino:avr:uno`, 9,368 bytes (29%) flash / 429 bytes (20%) RAM, no warnings from the
+  sketch itself.
+
+**Still open:** whether the fixed WS2812 timing actually works on a real chip; whether
+motors move once battery power is confirmed; ultrasonic/line-sensor reads; the 500 ms
+watchdog cable-pull latency; motor DIR polarity.
+
+A follow-up report from the same bench session: a program stored with "Put this on my
+robot," followed by a power cycle, still showed no observable effect. Rather than guess
+a third time, `INFO` (`PlayerCommand.INFO`) - reserved by PR #1 but never called from the
+app - is now wired up: `DeviceSession.getPlayerInfoRaw()`, parsed by the new
+`src/device/playerInfo.ts`, surfaced as a **"What's on my robot?"** button next to the
+storage controls. It reports, in plain language, whether a program is actually stored,
+its size, and whether boot-idle is set - so the next round can see directly whether the
+storage/boot logic is at fault versus the already-flagged battery/LED issues producing a
+"nothing happened" that looks the same from the outside. `tests/playerInfo.test.ts`
+covers the wire-format parser; `tests/deviceSession.test.ts` covers the request/reply
+plumbing against a fake link. Not yet exercised against real firmware.
+
 ### What is explicitly not built
 
-- **Player firmware and the flash-once workflow (Tier 2 / Phase 5).** Browser-side
-  bytecode compilation, transfer, verification, and halt-flag commands exist, but no
-  Arduino sketch was written and no STK500 flashing code exists. This needs the
-  GPLv2/GPLv3 firmware decision, the teacher-only flashing access decision, an Arduino
-  build environment, and real hardware to validate watchdog timing and EEPROM
-  persistence.
+- **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now
+  exists (`firmware/mbotvr-player/`, from scratch, GPL-3.0-or-later) but is unverified on
+  hardware, and there is still no in-app way to write it to a board - `src/device/flash/`
+  does not exist. For now a teacher flashes it with the Arduino IDE or `arduino-cli` over
+  USB. Validating watchdog timing, EEPROM persistence, and power-cycle behaviour needs
+  real hardware.
 - **The Arduino-C export fallback (Phase 7).** Safari/Firefox users currently see the
   "open in Chrome or Edge" message with no export alternative yet.
 - **A device-profile UI** for a teacher to correct the assumed default port wiring

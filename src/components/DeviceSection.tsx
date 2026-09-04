@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as Blockly from 'blockly/core';
 import { compileWorkspace } from '../blocks/compile';
 import { BytecodeCompileError, compileWorkspaceToPlayerBytecode } from '../device/bytecode';
+import { describePlayerInfo, parsePlayerInfo } from '../device/playerInfo';
 import { assessHardwareCompatibility, hasBlockingIssue } from '../device/preflight';
 import { createSerialRuntime } from '../device/SerialRobotRuntime';
 import { isConnected } from '../device/types';
@@ -185,6 +186,24 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
     }
   }, [controller, diagnosticLog, pushToast]);
 
+  const handleCheckRobotInfo = useCallback(async () => {
+    const session = controller.getSession();
+    if (!session) return;
+    try {
+      const raw = await session.getPlayerInfoRaw();
+      const info = parsePlayerInfo(raw);
+      if (!info) {
+        pushToast('error', "Got a reply, but couldn't make sense of it. Check Diagnostics for the raw bytes.");
+        diagnosticLog.logError('Unparseable Player INFO reply', new Error(raw));
+        return;
+      }
+      pushToast('info', describePlayerInfo(info));
+    } catch (error) {
+      diagnosticLog.logError('Player INFO request failed', error);
+      pushToast('error', "Couldn't check what's stored on the robot. Keep it connected and try again.");
+    }
+  }, [controller, diagnosticLog, pushToast]);
+
   const handleFocusBlock = useCallback(
     (blockId: string) => {
       onHighlight(blockId);
@@ -235,12 +254,14 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
           onStop={() => void handleStop()}
           onStoreProgram={() => void handleStoreProgram()}
           onClearStoredProgram={() => void handleClearStoredProgram()}
+          onCheckRobotInfo={() => void handleCheckRobotInfo()}
           running={running}
           runDisabled={hasBlockingIssue(issues)}
           runDisabledReason={runDisabledReason}
           storeDisabled={storeDisabled}
           clearDisabled={clearDisabled}
           storeDisabledReason={storeDisabledReason}
+          infoAvailable={Boolean(connectedProfile?.supportsOnRobotPrograms)}
         />
         {controller.status.phase === 'stopUnconfirmed' && (
           <StopBanner onStop={() => void handleStop()} onAcknowledge={controller.acknowledgeStopUnconfirmed} />
