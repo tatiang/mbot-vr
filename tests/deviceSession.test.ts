@@ -383,3 +383,36 @@ describe('DeviceSession Player firmware storage', () => {
     await expect(session.getPlayerInfoRaw()).rejects.toMatchObject({ code: 'ERR_FIRMWARE_UNKNOWN' });
   });
 });
+
+describe('DeviceSession.getStats', () => {
+  it('counts every outgoing frame as a packet sent, regardless of call site', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake);
+    const session = new DeviceSession(fake.link, 'usb');
+    await session.identify(); // at least one outgoing VERSION GET
+    session.confirmIdentity();
+
+    await session.setMotor(9, 100); // fire-and-forget write path
+    await session.getUltrasonicPayload(); // correlated-request path
+
+    expect(session.getStats().packetsSent).toBe(fake.writes.length);
+  });
+
+  it('counts every parsed reply frame as a packet received', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake);
+    const session = new DeviceSession(fake.link, 'usb');
+
+    await session.identify();
+    await session.getUltrasonicPayload();
+
+    // identify()'s VERSION reply + the ultrasonic FLOAT reply = 2 parsed frames.
+    expect(session.getStats().packetsReceived).toBe(2);
+  });
+
+  it('starts at zero for a freshly constructed session', () => {
+    const fake = createFakeLink();
+    const session = new DeviceSession(fake.link, 'usb');
+    expect(session.getStats()).toEqual({ packetsSent: 0, packetsReceived: 0 });
+  });
+});

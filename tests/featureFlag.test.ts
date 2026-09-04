@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { isHardwareFeatureEnabled } from '../src/device/featureFlag';
+import { isHardwareDebugEnabled, isHardwareFeatureEnabled } from '../src/device/featureFlag';
 
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
@@ -75,6 +75,34 @@ describe('isHardwareFeatureEnabled', () => {
       expect(isHardwareFeatureEnabled()).toBe(true);
     } finally {
       Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: storage });
+    }
+  });
+});
+
+describe('isHardwareDebugEnabled', () => {
+  it('is off by default', () => {
+    expect(isHardwareDebugEnabled()).toBe(false);
+  });
+
+  it('is on with ?debug=1', () => {
+    setLocation('?debug=1');
+    expect(isHardwareDebugEnabled()).toBe(true);
+  });
+
+  it('is not persisted - a later visit with no query param is off again', () => {
+    setLocation('?debug=1');
+    expect(isHardwareDebugEnabled()).toBe(true);
+    setLocation('');
+    expect(isHardwareDebugEnabled()).toBe(false);
+  });
+
+  it('never throws when window is unavailable', () => {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: undefined });
+    try {
+      expect(() => isHardwareDebugEnabled()).not.toThrow();
+      expect(isHardwareDebugEnabled()).toBe(false);
+    } finally {
+      setLocation('');
     }
   });
 });

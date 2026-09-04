@@ -84,6 +84,9 @@ export class DeviceSession {
   private unsubData: () => void;
   private unsubDisconnect: () => void;
   private disposed = false;
+  /** Frame counts for the debug panel (`DeviceDebugPanel.tsx`) - see `getStats()`. */
+  private packetsSent = 0;
+  private packetsReceived = 0;
 
   constructor(
     private readonly link: SerialLink,
@@ -372,7 +375,16 @@ export class DeviceSession {
 
   private nextIdx(): number {
     this.index = nextIndex(this.index);
+    // Every outgoing frame - fire-and-forget actuator writes and correlated GET
+    // requests alike - draws its index from here first, so this is the one place that
+    // sees every packet sent without threading a counter through each call site.
+    this.packetsSent += 1;
     return this.index;
+  }
+
+  /** Raw counters for the debug panel - see `DeviceDebugPanel.tsx`. Not shown to students. */
+  getStats(): { packetsSent: number; packetsReceived: number } {
+    return { packetsSent: this.packetsSent, packetsReceived: this.packetsReceived };
   }
 
   private async write(frame: Uint8Array): Promise<void> {
@@ -476,6 +488,7 @@ export class DeviceSession {
       this.callbacks.onLog?.({ message: 'Raw bytes received', detail: hexPreview(bytes) });
     }
     const frames = this.parser.push(bytes);
+    this.packetsReceived += frames.length;
     for (const frame of frames) {
       // A bare RUN/RESET/START acknowledgement carries no index at all (see the
       // confidence note in MakeblockProtocol.ts) - there is nothing to correlate it

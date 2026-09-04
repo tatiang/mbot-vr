@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { openBleLink, requestBleDevice } from '../device/BluetoothLeTransport';
 import { DeviceSession } from '../device/DeviceSession';
 import { openSerialLink, requestSerialPort } from '../device/SerialTransport';
-import { detectCapabilities, type DeviceCapabilities } from '../device/capabilities';
+import { canOfferHardware, detectCapabilities, type DeviceCapabilities } from '../device/capabilities';
 import { stopRobot } from '../device/StopController';
 import type { ConnectionStatus, LinkKind, StopOutcome } from '../device/types';
 import type { DiagnosticLog } from '../diagnostics/DiagnosticLog';
 import { classifyError } from '../diagnostics/taxonomy';
+import type { SerialLink } from '../device/SerialTransport';
 
 /**
  * React glue around `DeviceSession` - the browser-facing half (requesting a port,
@@ -53,7 +55,7 @@ function wait(ms: number): Promise<void> {
 export function useDeviceSession(log: DiagnosticLog): DeviceSessionController {
   const capabilities = useRef(detectCapabilities()).current;
   const [status, setStatus] = useState<ConnectionStatus>(
-    capabilities.usbAvailable && capabilities.secureContext ? { phase: 'disconnected' } : { phase: 'unsupported' },
+    canOfferHardware(capabilities) ? { phase: 'disconnected' } : { phase: 'unsupported' },
   );
   const sessionRef = useRef<DeviceSession | null>(null);
 
@@ -67,10 +69,19 @@ export function useDeviceSession(log: DiagnosticLog): DeviceSessionController {
     async (kind: LinkKind, options: { showAllPorts?: boolean } = {}) => {
       setStatus({ phase: 'requestingPermission', link: kind });
       try {
-        const port = await requestSerialPort(kind, options);
-        setStatus({ phase: 'opening', link: kind });
-        const link = await openSerialLink(port);
-        await wait(RESET_SETTLE_MS); // let a likely auto-reset finish - see the note above
+        let link: SerialLink;
+        if (kind === 'ble') {
+          const device = await requestBleDevice();
+          setStatus({ phase: 'opening', link: kind });
+          link = await openBleLink(device, (message) => log.log({ message }));
+          // GATT has no DTR-line auto-reset to wait out - the board was never reset by
+          // connecting, so there is nothing to settle before the first probe.
+        } else {
+          const port = await requestSerialPort(kind, options);
+          setStatus({ phase: 'opening', link: kind });
+          link = await openSerialLink(port);
+          await wait(RESET_SETTLE_MS); // let a likely auto-reset finish - see the note above
+        }
         const session = new DeviceSession(link, kind, {
           onStatusChange: setStatus,
           onLog: (event) => log.log(event),

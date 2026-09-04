@@ -34,3 +34,22 @@ export function isHardwareFeatureEnabled(): boolean {
     return true;
   }
 }
+
+const DEBUG_QUERY_PARAM = 'debug';
+
+/**
+ * Off by default, on only via `?debug=1` in the URL - never persisted, so it never
+ * survives a shared/managed Chromebook's next session by accident. Gates the raw
+ * connection/actuator test controls in `DeviceDebugPanel.tsx` (per-motor test, raw
+ * sensor reads) that have no business being one click away from a student mid-class -
+ * see the "DEBUG PANEL" section of the Bluetooth work this gates.
+ */
+export function isHardwareDebugEnabled(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get(DEBUG_QUERY_PARAM);
+    return value === '1' || value === 'true';
+  } catch {
+    return false;
+  }
+}

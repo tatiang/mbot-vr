@@ -1192,6 +1192,41 @@ storage/boot logic is at fault versus the already-flagged battery/LED issues pro
 covers the wire-format parser; `tests/deviceSession.test.ts` covers the request/reply
 plumbing against a fake link. Not yet exercised against real firmware.
 
+### Ninth round: a Web Bluetooth (GATT) transport for BLE-only modules
+
+A module printed **"Bluetooth BLEV1.0"** cannot be reached by this app's existing
+Bluetooth path at all - that path is Bluetooth Classic RFCOMM over Web Serial (see §3,
+sources 10-11), which only works for a *dual-mode* module's SPP service. A BLE-only
+module has none, so it would never appear in that chooser. This directly answers what
+kind of module at least one real robot has, for **U4** ("which Bluetooth module is
+fitted") - though whether the *rest of the fleet* matches is still open.
+
+Added a second, genuinely different transport - `src/device/BluetoothLeTransport.ts`,
+using `navigator.bluetooth` (Web Bluetooth/GATT) instead of `navigator.serial` - as one
+more implementation of the same `SerialLink` interface `SerialTransport.ts` already
+implements for USB and RFCOMM. Because `DeviceSession`, `MakeblockProtocol`'s
+`FrameParser`, `StopController`, `SerialRobotRuntime` and the Player storage commands
+only ever depend on that interface, all of Tier 1 ("Run on robot", live sensor reads,
+the full stop escalation ladder) and Tier 2 (on-robot program storage, gated off for any
+wireless link exactly as before) work over this new transport with no changes of their
+own - a new `LinkKind` (`'ble'`) and an `isWirelessLink()` helper covering both wireless
+kinds were the only changes needed outside the new transport file itself.
+
+Full design, the GATT service/characteristic UUID sourcing and its genuine uncertainty
+(three candidate profiles are tried in order; none is confirmed against this specific
+part), the debug panel (`?debug=1`, per-actuator test buttons), and the physical bench
+test plan: **[`docs/bluetooth-le-bridge.md`](./bluetooth-le-bridge.md)**.
+
+**Verified so far:** a real Chromium `navigator.bluetooth.requestDevice()` call, from
+the actual "Connect Bluetooth" button, with no BLE hardware available to select -
+correctly surfaced as `ERR_NO_PORT_SELECTED` end-to-end through the existing
+error-taxonomy/diagnostic-log pipeline, with a clean return to `disconnected`. Every
+other claim - which GATT profile actually matches BLEV1.0, whether the 20-byte write
+chunking paces correctly, whether motors/sensors work over this link at all - is
+unverified until the bench test plan in that doc runs against a real module.
+`npm run typecheck`/`test` (445 passing)/`build` all pass; no simulator or USB-path file
+changed in kind.
+
 ### What is explicitly not built
 
 - **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now

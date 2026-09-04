@@ -57,7 +57,7 @@ export const SERIAL_BAUD_RATE = 115200;
  * USB-serial hardware is never permanently hidden by the filter.
  */
 export async function requestSerialPort(
-  kind: LinkKind = 'usb',
+  kind: Exclude<LinkKind, 'ble'> = 'usb',
   options: { showAllPorts?: boolean } = {},
 ): Promise<SerialPort> {
   if (typeof navigator === 'undefined' || !navigator.serial) {

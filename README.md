@@ -528,23 +528,27 @@ The suite covers the logic that would be expensive to get wrong:
 
 ## Physical mBot connection (experimental)
 
-Experimental work toward driving a **real** mBot v1.x from this app over USB or
-Bluetooth (via Web Serial) is available by default in Chrome and Edge. The classroom
-simulator path above is still separate from it, and an explicit opt-out keeps the
-device code from being downloaded.
+Experimental work toward driving a **real** mBot v1.x from this app over USB, Bluetooth
+Classic, or Bluetooth Low Energy is available by default in Chrome and Edge. The
+classroom simulator path above is still separate from it, and an explicit opt-out keeps
+the device code from being downloaded.
 
 - **Turn it off:** open the app with `?hardware=0` in the URL, or run
   `localStorage.setItem('mbotvr.hardware.enabled', '0')`.
 - **Turn it back on:** open the app with `?hardware=1`, or remove the
   `mbotvr.hardware.enabled` localStorage key.
-- **What works today:** connecting, identifying a robot with a "wink" confirmation so
-  you don't send to the wrong one, a stop button whose ladder only ever claims "stopped"
-  once the robot has actually confirmed it, running the current blocks tethered to a
-  physical robot, driving both wheels, setting the onboard LEDs, and a diagnostic log
-  for troubleshooting.
-- **What doesn't exist yet:** untethered/flashed programs, an Arduino-export fallback
-  for Safari/Firefox, and real-hardware validation of sensor reads and Tier 2 Player
-  firmware.
+- **Connecting:** a cable, a **Connect Bluetooth** button for BLE-only modules (like the
+  "Bluetooth BLEV1.0" board), or a secondary Bluetooth-classic option for older dual-mode
+  modules. Uploading code to the robot always needs the cable - both Bluetooth options
+  are live-control only.
+- **What works today:** connecting over any of the three links, identifying a robot with
+  a "wink" confirmation so you don't send to the wrong one, a stop button whose ladder
+  only ever claims "stopped" once the robot has actually confirmed it, running the
+  current blocks live on a physical robot, driving both wheels, setting the onboard
+  LEDs, and a diagnostic log for troubleshooting.
+- **What doesn't exist yet:** an Arduino-export fallback for Safari/Firefox, and
+  real-hardware validation of sensor reads, Tier 2 Player firmware, and the new
+  Bluetooth LE link.
 - **Firmware updates:** mBot VR cannot flash firmware from the web app yet. If a robot
   does not answer because it was last used with mBlock Upload mode, restore Makeblock's
   factory firmware in mBlock 5: Setting -> Firmware Update -> Factory Firmware ->
@@ -552,6 +556,8 @@ device code from being downloaded.
 
 Full design rationale, the safety reasoning behind the stop mechanism, and exactly
 what remains open: [`docs/hardware-bridge-plan.md`](./docs/hardware-bridge-plan.md).
+The Bluetooth LE bridge specifically - architecture, UUID sourcing, and its bench-test
+checklist: [`docs/bluetooth-le-bridge.md`](./docs/bluetooth-le-bridge.md).
 
 ---
 

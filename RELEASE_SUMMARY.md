@@ -1,5 +1,25 @@
 # Release Summary
 
+## v1.3.2 — Web Bluetooth (BLE) connection for BLE-only modules
+
+- Added `src/device/BluetoothLeTransport.ts`, a Web Bluetooth (GATT) transport that
+  implements the same `SerialLink` interface the USB and Bluetooth-classic transports
+  use, so every existing feature (Run on robot, STOP's full safety ladder, sensor
+  reads, on-robot code storage) works over it unchanged.
+- Added a "Connect Bluetooth" button for modules like "Bluetooth BLEV1.0" that the
+  existing Bluetooth-classic (RFCOMM) option can't reach at all - it's BLE-only, with
+  no SPP service. The existing option is kept as a secondary link for dual-mode
+  modules.
+- Added an opt-in `?debug=1` panel with per-actuator test buttons (motors, ultrasonic)
+  and connection stats, for bringing up new hardware without a full block program.
+- Five new `ERR_BLE_*` diagnostic codes, matching the existing taxonomy's format.
+- Unverified against a real BLE module - the GATT service/characteristic UUIDs are
+  sourced from public secondhand reports, not confirmed, and the app tries three
+  candidate profiles in order rather than betting on one guess. See
+  `docs/bluetooth-le-bridge.md` for the full confidence note and bench-test checklist.
+- `npm run typecheck`/`test` (445 passing, all pre-existing tests unchanged)/`build`
+  all pass.
+
 ## v1.3.1 — Player firmware sketch (unverified on hardware)
 
 - Added `firmware/mbotvr-player/mbotvr-player.ino`, a from-scratch GPL-3.0-or-later
