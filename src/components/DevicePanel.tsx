@@ -77,23 +77,34 @@ export function DevicePanel({
             </p>
           )}
           <div className="device-panel__choices">
-            <button type="button" className="btn" onClick={() => onConnect('usb')}>
-              <RobotIcon size={15} /> Connect (via cable)
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => onConnect('bluetooth')}>
-              Connect (via Bluetooth)
-            </button>
+            {capabilities.usbAvailable && (
+              <button type="button" className="btn" onClick={() => onConnect('usb')}>
+                <RobotIcon size={15} /> Connect (via cable)
+              </button>
+            )}
+            {capabilities.bleAvailable && (
+              <button type="button" className="btn btn--ghost" onClick={() => onConnect('ble')}>
+                Connect Bluetooth
+              </button>
+            )}
           </div>
           <p className="hint-text" style={{ textAlign: 'left' }}>
             Only driving the robot works wirelessly - uploading code to it needs the cable.
           </p>
-          <button
-            type="button"
-            className="btn btn--sm btn--ghost"
-            onClick={() => onConnect('usb', { showAllPorts: true })}
-          >
-            Show all ports
-          </button>
+          {capabilities.usbAvailable && (
+            <button
+              type="button"
+              className="btn btn--sm btn--ghost"
+              onClick={() => onConnect('usb', { showAllPorts: true })}
+            >
+              Show all ports
+            </button>
+          )}
+          {capabilities.usbAvailable && (
+            <button type="button" className="btn btn--sm btn--ghost" onClick={() => onConnect('bluetooth')}>
+              My robot's Bluetooth module is older
+            </button>
+          )}
         </div>
       );
 

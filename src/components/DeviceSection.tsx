@@ -2,15 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as Blockly from 'blockly/core';
 import { compileWorkspace } from '../blocks/compile';
 import { BytecodeCompileError, compileWorkspaceToPlayerBytecode } from '../device/bytecode';
+import { isHardwareDebugEnabled } from '../device/featureFlag';
 import { describePlayerInfo, parsePlayerInfo } from '../device/playerInfo';
 import { assessHardwareCompatibility, hasBlockingIssue } from '../device/preflight';
 import { createSerialRuntime } from '../device/SerialRobotRuntime';
-import { isConnected } from '../device/types';
+import { isConnected, isWirelessLink } from '../device/types';
 import type { DiagnosticLog } from '../diagnostics/DiagnosticLog';
 import { useDeviceSession } from '../hooks/useDeviceSession';
 import { ProgramRunner } from '../runtime/ProgramRunner';
 import { Collapsible } from './ui';
 import { DevicePanel } from './DevicePanel';
+import { DeviceDebugPanel } from './DeviceDebugPanel';
 import { StopBanner } from './StopBanner';
 import { PreflightList } from './PreflightList';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
@@ -132,8 +134,8 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
     const session = controller.getSession();
     if (!workspace || !session) return;
 
-    if (controller.status.phase === 'ready' && controller.status.link === 'bluetooth') {
-      pushToast('error', 'Programs can only be put on the robot through the cable.');
+    if (controller.status.phase === 'ready' && isWirelessLink(controller.status.link)) {
+      pushToast('error', 'Code can only be uploaded to the robot through the cable.');
       return;
     }
     if (!session.getProfile().supportsOnRobotPrograms) {
@@ -218,7 +220,7 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
   const transferring = controller.status.phase === 'sending' || controller.status.phase === 'verifying';
   const storeDisabledReason =
     connected && controller.status.phase !== 'stopUnconfirmed' && controller.status.phase !== 'stopping'
-      ? connectedLink === 'bluetooth'
+      ? connectedLink && isWirelessLink(connectedLink)
         ? 'Uploading code to the robot needs the cable. Wireless can only drive it live.'
         : !connectedProfile?.supportsOnRobotPrograms
           ? 'On-robot code needs mBot VR Player firmware. Use Run on robot for tethered control.'
@@ -232,7 +234,7 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
     running ||
     transferring ||
     stopState ||
-    connectedLink === 'bluetooth' ||
+    Boolean(connectedLink && isWirelessLink(connectedLink)) ||
     !connectedProfile?.supportsOnRobotPrograms;
   const runDisabledReason = hasBlockingIssue(issues)
     ? 'Fix the blocked items below before running on the robot.'
@@ -277,6 +279,17 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
       <Collapsible title="Diagnostics">
         <DiagnosticsPanel log={diagnosticLog} appVersion={appVersion} onMessage={pushToast} />
       </Collapsible>
+
+      {isHardwareDebugEnabled() && (
+        <Collapsible title="Debug (?debug=1)">
+          <DeviceDebugPanel
+            capabilities={controller.capabilities}
+            status={controller.status}
+            session={controller.getSession()}
+            onStop={() => void handleStop()}
+          />
+        </Collapsible>
+      )}
     </>
   );
 }

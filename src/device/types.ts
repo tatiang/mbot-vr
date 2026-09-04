@@ -11,8 +11,16 @@
 /** Which `MbotRuntime` a running program is driving. */
 export type ExecutionTarget = 'simulator' | 'robot';
 
-/** How the browser is talking to the robot. */
-export type LinkKind = 'usb' | 'bluetooth';
+/**
+ * How the browser is talking to the robot. `'bluetooth'` is Bluetooth Classic RFCOMM
+ * (a dual-mode module's SPP service, reached through Web Serial - see
+ * `SerialTransport.ts`); `'ble'` is Bluetooth Low Energy GATT (a BLE-only module like
+ * the "Bluetooth BLEV1.0" board, reached through Web Bluetooth - see
+ * `BluetoothLeTransport.ts`). Both are wireless and both are live-control-only, same as
+ * the plan's original `'bluetooth'` design - mBot v1 upload is USB-only by hardware
+ * regardless of which wireless transport is in use.
+ */
+export type LinkKind = 'usb' | 'bluetooth' | 'ble';
 
 /**
  * Everything the device layer knows about the robot on the other end of the link,
@@ -70,6 +78,11 @@ export type ConnectionStatus =
   | { phase: 'stopUnconfirmed'; link: LinkKind; profile: DeviceProfile }
   | { phase: 'linkLost'; link: LinkKind }
   | { phase: 'error'; code: string; link?: LinkKind };
+
+/** True for any wireless link - both are live-control-only; uploading needs the cable. */
+export function isWirelessLink(kind: LinkKind): boolean {
+  return kind === 'bluetooth' || kind === 'ble';
+}
 
 export function isConnected(status: ConnectionStatus): boolean {
   return (

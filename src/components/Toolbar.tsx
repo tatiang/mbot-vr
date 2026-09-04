@@ -36,7 +36,7 @@ export function Toolbar({
           <OpponentRobotIcon size={19} />
         </span>
         mBot VR
-        <span className="brand__version">v1.3.1</span>
+        <span className="brand__version">v1.3.2</span>
       </div>
 
       <div className="field">

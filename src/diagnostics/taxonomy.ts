@@ -171,6 +171,36 @@ export const ERROR_TAXONOMY: Readonly<Record<string, TaxonomyEntry>> = Object.fr
     studentMessage: 'This robot needs to be re-flashed before it can be used.',
     suggestedAction: 'Re-flash needed before this robot is usable',
   },
+  ERR_BLE_GATT_UNAVAILABLE: {
+    code: 'ERR_BLE_GATT_UNAVAILABLE',
+    category: 'connection',
+    studentMessage: "That Bluetooth device doesn't look like a robot. Pick the right one and try again.",
+    suggestedAction: 'Device has no GATT server - pick a different one',
+  },
+  ERR_BLE_CONNECT_FAILED: {
+    code: 'ERR_BLE_CONNECT_FAILED',
+    category: 'connection',
+    studentMessage: "Couldn't connect over Bluetooth. Make sure the robot is on and nearby, then try again.",
+    suggestedAction: 'GATT connect failed - check power and range, retry',
+  },
+  ERR_BLE_SERVICE_NOT_FOUND: {
+    code: 'ERR_BLE_SERVICE_NOT_FOUND',
+    category: 'connection',
+    studentMessage: "This robot's wireless module can't be used from a browser yet. Use the cable instead.",
+    suggestedAction: 'No known GATT profile matched - see Diagnostics for what was tried',
+  },
+  ERR_BLE_CHARACTERISTIC_NOT_FOUND: {
+    code: 'ERR_BLE_CHARACTERISTIC_NOT_FOUND',
+    category: 'connection',
+    studentMessage: "Connected, but couldn't start listening to the robot. Try reconnecting.",
+    suggestedAction: 'Could not subscribe to notifications - reconnect',
+  },
+  ERR_BLE_WRITE_FAILED: {
+    code: 'ERR_BLE_WRITE_FAILED',
+    category: 'runtime',
+    studentMessage: 'A Bluetooth command did not go through. Check the connection and try again.',
+    suggestedAction: 'BLE write failed - check range/power, retry',
+  },
   ERR_LINK_LOST: {
     code: 'ERR_LINK_LOST',
     category: 'runtime',
