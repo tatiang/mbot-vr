@@ -118,13 +118,43 @@ same way every other protocol fact in this app graduates from "sourced" to "conf
 
 ## First smoke test already run (software only)
 
-Clicking the real "Connect Bluetooth" button in a real Chromium browser (no mock) during
-this work: `navigator.bluetooth.requestDevice()` genuinely opened, no BLE hardware was
-available to select, the browser reported `NotFoundError`, and the app correctly
-classified it as `ERR_NO_PORT_SELECTED` and returned to a clean, retryable
-`disconnected` state - visible end-to-end in the Diagnostics log with no unhandled
-exception. That confirms the browser-facing half of the stack; it says nothing yet about
-talking to a real module.
+Clicking the real "Connect Bluetooth" button in a real Chromium browser (no mock)
+before any real hardware was involved: `navigator.bluetooth.requestDevice()` genuinely
+opened, no BLE hardware was available to select, the browser reported `NotFoundError`,
+and the app correctly classified it as `ERR_NO_PORT_SELECTED` and returned to a clean,
+retryable `disconnected` state - visible end-to-end in the Diagnostics log with no
+unhandled exception. That confirmed the browser-facing half of the stack; it said
+nothing yet about talking to a real module.
+
+## First real-hardware finding: the chooser was empty, and the fix
+
+The very first attempt against a real "Bluetooth BLEV1.0" module surfaced a genuine bug,
+not a "device not paired yet" situation: the Bluetooth chooser opened but listed **no
+devices at all**, not even an unrelated one. `requestBleDevice()`'s original
+`filters: [{ services: [uuid] }, ...]` (one entry per candidate profile in
+`CANDIDATE_PROFILES`) was the cause. `filters: [{services}]` only matches a peripheral's
+**advertising/scan-response payload** - it has nothing to do with what GATT services a
+device exposes once connected. Plenty of cheap or rebranded BLE-UART bridges (this
+module plausibly among them) advertise only a device name and expect a central to
+connect blind, discovering services afterward via GATT - Web Bluetooth's `filters`
+option has no way to express "match on anything, then check services after connecting."
+
+Fixed by requesting `acceptAllDevices: true` instead of any filter - every nearby BLE
+device now appears (a classroom's phones and earbuds included; picking the right one is
+on the student, same as the existing unfiltered "Show all ports" USB fallback already
+asks of them). `optionalServices` is untouched and still lists every candidate profile's
+service UUID, so `openBleLink()`'s post-connect `getPrimaryService()` walk over
+`CANDIDATE_PROFILES` works exactly as designed regardless of how the device was found.
+See the comments on `requestBleDevice()` and at the top of
+`BluetoothLeTransport.ts` for the full reasoning, and
+`tests/bluetoothLeTransport.test.ts`'s "chooser scope" tests for the regression test
+that pins this (`acceptAllDevices: true`, no `filters`, `optionalServices` unchanged).
+
+**Still to determine:** what BLEV1.0 actually advertises (name, or nothing beyond a MAC).
+Once known, `requestBleDevice()` could safely re-narrow to `filters: [{ namePrefix: ...
+}]` - a real, evidence-based tightening rather than the blind guess `filters:
+[{services}]` turned out to be. Until then `acceptAllDevices: true` stays, because it is
+the one option that cannot be "wrong" the way a second guess could be.
 
 ## Physical-hardware test plan
 
@@ -132,11 +162,13 @@ Do this **before** trusting any block program over Bluetooth, in this order, wit
 mBot's **wheels off the table**:
 
 1. Lift the wheels clear of the table/floor.
-2. Open mBot VR with `?hardware=1`, click **Connect Bluetooth**, pick the BLEV1.0
-   module. Confirm the app reaches `ready` (identify succeeds) - if it instead lands on
-   `ERR_BLE_SERVICE_NOT_FOUND`, check Diagnostics for which profile names were tried and
-   update the confidence note above with what the module's `Bluetooth` app / `nRF
-   Connect` / a similar generic BLE inspector shows it actually advertises.
+2. Open mBot VR with `?hardware=1`, click **Connect Bluetooth**. The chooser now lists
+   **every** nearby BLE device (see "First real-hardware finding" above) - pick the
+   BLEV1.0 module by name/proximity. Confirm the app reaches `ready` (identify
+   succeeds) - if it instead lands on `ERR_BLE_SERVICE_NOT_FOUND`, check Diagnostics for
+   which profile names were tried and update the confidence note above with what the
+   module's `Bluetooth` app / `nRF Connect` / a similar generic BLE inspector shows it
+   actually exposes.
 3. Open `?hardware=1&debug=1`, expand **Debug**, click **Test Left Motor** - expect a
    brief, slow spin, nothing else.
 4. **STOP.**

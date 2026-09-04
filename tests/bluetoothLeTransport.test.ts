@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BLE_MAX_CHUNK_BYTES, hasWebBluetooth, openBleLink, requestBleDevice } from '../src/device/BluetoothLeTransport';
 import { DeviceError } from '../src/device/types';
 import { createFakeBleDevice, createGattlessDevice } from './fakeBluetoothDevice';
@@ -21,6 +21,37 @@ describe('hasWebBluetooth / requestBleDevice under Node (no browser globals)', (
 
   it('requestBleDevice throws ERR_BROWSER_UNSUPPORTED', async () => {
     await expect(requestBleDevice()).rejects.toMatchObject({ code: 'ERR_BROWSER_UNSUPPORTED' });
+  });
+});
+
+describe('requestBleDevice chooser scope (regression: an empty chooser against real BLEV1.0 hardware)', () => {
+  afterEach(() => {
+    delete (navigator as { bluetooth?: unknown }).bluetooth;
+  });
+
+  it('asks for every nearby device, not a service-UUID filter that real hardware proved empty', async () => {
+    const requestDevice = vi.fn().mockResolvedValue({ id: 'x' });
+    (navigator as unknown as { bluetooth: Bluetooth }).bluetooth = { requestDevice } as unknown as Bluetooth;
+
+    await requestBleDevice();
+
+    expect(requestDevice).toHaveBeenCalledTimes(1);
+    const options = requestDevice.mock.calls[0][0];
+    expect(options.acceptAllDevices).toBe(true);
+    expect(options.filters).toBeUndefined();
+    // Still grants post-connect access to every candidate profile's service.
+    expect(options.optionalServices).toEqual([
+      '0000ffe1-0000-1000-8000-00805f9b34fb',
+      '0000ffe0-0000-1000-8000-00805f9b34fb',
+      '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+    ]);
+  });
+
+  it('maps a dismissed chooser to ERR_NO_PORT_SELECTED', async () => {
+    const requestDevice = vi.fn().mockRejectedValue(new DOMException('cancelled', 'NotFoundError'));
+    (navigator as unknown as { bluetooth: Bluetooth }).bluetooth = { requestDevice } as unknown as Bluetooth;
+
+    await expect(requestBleDevice()).rejects.toMatchObject({ code: 'ERR_NO_PORT_SELECTED' });
   });
 });
 

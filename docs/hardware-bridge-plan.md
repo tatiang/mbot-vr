@@ -1227,6 +1227,19 @@ unverified until the bench test plan in that doc runs against a real module.
 `npm run typecheck`/`test` (445 passing)/`build` all pass; no simulator or USB-path file
 changed in kind.
 
+**First real-hardware finding, same round:** the very first attempt against a real
+"Bluetooth BLEV1.0" module returned a **completely empty chooser** - not just missing
+the robot. Cause: `requestBleDevice()`'s `filters: [{services: [uuid]}]` only matches a
+peripheral's *advertising payload*, not its GATT table, and this module apparently
+doesn't advertise a custom service UUID (a common shape for cheap BLE-UART bridges,
+which expect a central to connect blind and discover services afterward). Fixed by
+requesting `acceptAllDevices: true` instead - every nearby device now appears, and
+`optionalServices` (unaffected by the filter choice) still grants `openBleLink()` access
+to try all three candidate profiles once connected. Full writeup, including what would
+justify re-narrowing the chooser later: `docs/bluetooth-le-bridge.md`'s "First
+real-hardware finding" section. `tests/bluetoothLeTransport.test.ts` gained a regression
+test pinning the exact `requestDevice()` call shape. 447 tests passing.
+
 ### What is explicitly not built
 
 - **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now
