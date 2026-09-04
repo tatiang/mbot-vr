@@ -1256,6 +1256,17 @@ mBlock curriculum) and `mbot-vr.vercel.app` simply isn't on that allowlist yet -
 one-line addition for IT, not a policy reversal, once confirmed. Full writeup and the
 exact ask for IT: `docs/bluetooth-le-bridge.md`'s "Second real-hardware finding" section.
 
+A follow-up in the same round complicated that theory further (the Workspace-level
+policy turned out to be unrestricted too, and Chrome's own per-site permissions page
+showed no Bluetooth row at all for `mbot-vr.vercel.app`, pointing at a possible
+*separate* Chrome Browser Cloud Management enrollment on that specific machine) without
+reaching a resolution. **Decision: hide both Bluetooth options from students rather than
+keep chasing an environment layer neither side can inspect directly.**
+`isWirelessFeatureEnabled()` (`src/device/featureFlag.ts`) now gates "Connect
+Bluetooth" and the older RFCOMM option, off by default; `?wireless=1` restores them for
+testing. No code was removed - see `docs/bluetooth-le-bridge.md`'s file-status note and
+its "Decision: stop chasing it, hide it instead" closing note.
+
 ### What is explicitly not built
 
 - **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now

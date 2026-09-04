@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as Blockly from 'blockly/core';
 import { compileWorkspace } from '../blocks/compile';
 import { BytecodeCompileError, compileWorkspaceToPlayerBytecode } from '../device/bytecode';
-import { isHardwareDebugEnabled } from '../device/featureFlag';
+import { isHardwareDebugEnabled, isWirelessFeatureEnabled } from '../device/featureFlag';
 import { describePlayerInfo, parsePlayerInfo } from '../device/playerInfo';
 import { assessHardwareCompatibility, hasBlockingIssue } from '../device/preflight';
 import { createSerialRuntime } from '../device/SerialRobotRuntime';
@@ -264,6 +264,7 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
           clearDisabled={clearDisabled}
           storeDisabledReason={storeDisabledReason}
           infoAvailable={Boolean(connectedProfile?.supportsOnRobotPrograms)}
+          wirelessEnabled={isWirelessFeatureEnabled()}
         />
         {controller.status.phase === 'stopUnconfirmed' && (
           <StopBanner onStop={() => void handleStop()} onAcknowledge={controller.acknowledgeStopUnconfirmed} />

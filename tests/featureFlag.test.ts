@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { isHardwareDebugEnabled, isHardwareFeatureEnabled } from '../src/device/featureFlag';
+import { isHardwareDebugEnabled, isHardwareFeatureEnabled, isWirelessFeatureEnabled } from '../src/device/featureFlag';
 
 class MemoryStorage implements Storage {
   private map = new Map<string, string>();
@@ -103,6 +103,43 @@ describe('isHardwareDebugEnabled', () => {
       expect(isHardwareDebugEnabled()).toBe(false);
     } finally {
       setLocation('');
+    }
+  });
+});
+
+describe('isWirelessFeatureEnabled', () => {
+  it('is off by default, unlike isHardwareFeatureEnabled', () => {
+    expect(isWirelessFeatureEnabled()).toBe(false);
+  });
+
+  it('turns on and persists with ?wireless=1', () => {
+    setLocation('?wireless=1');
+    expect(isWirelessFeatureEnabled()).toBe(true);
+    setLocation('');
+    expect(isWirelessFeatureEnabled()).toBe(true);
+  });
+
+  it('turns off and stays off with ?wireless=0, even after being enabled', () => {
+    setLocation('?wireless=1');
+    expect(isWirelessFeatureEnabled()).toBe(true);
+    setLocation('?wireless=0');
+    expect(isWirelessFeatureEnabled()).toBe(false);
+    setLocation('');
+    expect(isWirelessFeatureEnabled()).toBe(false);
+  });
+
+  it('never throws when storage is unavailable, and defaults to off', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('storage disabled');
+      },
+    });
+    try {
+      expect(() => isWirelessFeatureEnabled()).not.toThrow();
+      expect(isWirelessFeatureEnabled()).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { configurable: true, writable: true, value: storage });
     }
   });
 });

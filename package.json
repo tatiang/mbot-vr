@@ -1,7 +1,7 @@
 {
   "name": "mbot-vr",
   "private": true,
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "mBot VR - a browser-based block programming and simulation environment for the Makeblock mBot.",
   "license": "GPL-3.0-or-later",
   "type": "module",

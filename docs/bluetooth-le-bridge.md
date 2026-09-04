@@ -1,11 +1,19 @@
 # Bluetooth Low Energy (Web Bluetooth) bridge for BLE-only mBot modules
 
-**Status: implemented, UNVERIFIED against real hardware.** Everything below has been
-exercised against a fake GATT device in tests and against a real Chromium `navigator
-.bluetooth` (a real chooser opened, a real `NotFoundError` came back and was handled
-correctly - see the "First smoke test" section) but **never against an actual Makeblock
-BLEV1.0 module**. Treat every protocol-shape claim here the way
-`docs/hardware-bridge-plan.md` treats an unconfirmed one: plausible, sourced, not proven.
+**Status: implemented, UNVERIFIED against real hardware, hidden from the UI by default
+as of 2026-09-04.** Everything below has been exercised against a fake GATT device in
+tests and against a real Chromium `navigator.bluetooth` (a real chooser opened, a real
+`NotFoundError` came back and was handled correctly - see the "First smoke test"
+section) but **never reached a working connection against an actual Makeblock BLEV1.0
+module** - real classroom testing hit a managed school Chrome profile that never
+resolved cleanly (see "Second real-hardware finding" below), and the maintainer asked
+for both Bluetooth options hidden from students rather than the code removed, since the
+cause looks environment-specific, not a bug in this code. Nothing here was deleted -
+`isWirelessFeatureEnabled()` in `src/device/featureFlag.ts` gates the "Connect
+Bluetooth" and "My robot's Bluetooth module is older" buttons only, off by default;
+`?wireless=1` in the URL shows them again for testing. Treat every protocol-shape claim
+below the way `docs/hardware-bridge-plan.md` treats an unconfirmed one: plausible,
+sourced, not proven.
 
 ## Why this exists, and how it differs from the existing "Connect (via Bluetooth)"
 
@@ -195,6 +203,27 @@ exact kind of permission this app needs (for a different site), and this is a on
 allowlist addition rather than a policy reversal. **Still not yet confirmed** - this
 needs an answer from IT either way, since the exact policy name and how their MDM is
 configured isn't visible from here.
+
+**Follow-up, same round.** The Google Admin console's Workspace-level "Web Bluetooth
+API" setting (the org-wide policy checked to reach the finding above) actually showed
+**"Allow the user to decide"** - i.e. *not* restricted at that layer at all, which rules
+out a Workspace-level allowlist as the mechanism too. Separately, the per-site
+permissions page for `mbot-vr.vercel.app` in Chrome's own site settings had **no
+"Bluetooth devices" row whatsoever**, while every other device-permission API (USB,
+Serial, MIDI, HID) appeared there at its default. That is consistent with a *second*
+policy layer this app cannot see or influence - most plausibly this specific machine's
+Chrome being separately enrolled in Chrome Browser Cloud Management (browser-level,
+independent of the signed-in Workspace account) with its own, stricter
+`DefaultWebBluetoothGuardSetting`. `chrome://policy` (which would show the resolved
+value and its source directly) was not confirmed reachable or unreachable before the
+investigation stopped.
+
+**Decision: stop chasing it, hide it instead.** After three rounds of environment-level
+findings with no working connection reached, the maintainer asked to hide both
+Bluetooth options from students rather than keep investigating a policy layer neither
+of us can inspect directly - see the file status note at the top of this document.
+Revisit this investigation (starting from the `chrome://policy` check) only if a future
+session has hands-on access to the actual managed machine or its IT admin.
 
 ## Physical-hardware test plan
 

@@ -1,3 +1,13 @@
+Sep 4, 2026 — pending — Hid the Bluetooth connection options from the hardware panel; v1.3.3
+
+- Real classroom testing hit a Bluetooth connection that a managed school Chrome
+  profile never resolved cleanly across several rounds of diagnosis - see
+  `docs/bluetooth-le-bridge.md` for the full writeup.
+- Both Bluetooth options ("Connect Bluetooth" and the older Bluetooth-classic link) are
+  now hidden by default, leaving the cable as the only physical-robot connection
+  students see. Nothing was removed - `?wireless=1` in the URL brings them back for
+  testing, the same way `?hardware=1` works for the whole hardware panel.
+
 Sep 4, 2026 — pending — Added a Web Bluetooth (BLE) connection option for BLE-only mBot modules; v1.3.2
 
 - Added a "Connect Bluetooth" option (Web Bluetooth/GATT) alongside the existing cable
