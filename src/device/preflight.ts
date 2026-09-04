@@ -32,7 +32,7 @@ const AMBIGUOUS_BLOCKS: Record<string, string> = {
 export interface PreflightOptions {
   /** Whether a Me 7-Segment display module has been configured for the target robot. */
   hasDisplay?: boolean;
-  /** Run the stricter EEPROM bytecode pass used by "Put this on my robot". */
+  /** Run the stricter EEPROM bytecode pass used by "Upload to my robot". */
   onRobotProgram?: boolean;
 }
 

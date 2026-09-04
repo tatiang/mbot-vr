@@ -74,7 +74,7 @@ row of its phased plan (§15), this needs:
    vendoring a small audited implementation under `src/device/flash/` over pulling in
    a full library tree, and lazy-load it so a student who never flashes never
    downloads it.
-4. **UI**: "Put this on my robot" (send + verify), "Clear my robot's program" (the
+4. **UI**: "Upload to my robot" (send + verify), "Clear my robot's program" (the
    EEPROM halt-flag write - **not** the emergency Stop button, which must stay a
    separate, always-available, unconfirmed action per the plan's §9 safety design),
    and the flashing tool itself gated to a teacher-facing surface (the plan

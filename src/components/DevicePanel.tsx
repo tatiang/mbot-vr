@@ -153,7 +153,7 @@ export function DevicePanel({
           {runDisabled && runDisabledReason && <p className="hint-text" style={{ textAlign: 'left' }}>{runDisabledReason}</p>}
           <div className="device-panel__storage">
             <button type="button" className="btn btn--primary" onClick={onStoreProgram} disabled={storeDisabled}>
-              Put this on my robot
+              Upload to my robot
             </button>
             <button type="button" className="btn btn--ghost" onClick={onClearStoredProgram} disabled={clearDisabled}>
               Clear my robot's program
