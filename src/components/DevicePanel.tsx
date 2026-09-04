@@ -23,6 +23,8 @@ interface Props {
   storeDisabledReason?: string;
   /** Whether the connected firmware supports Player's `INFO` query at all. */
   infoAvailable: boolean;
+  /** `isWirelessFeatureEnabled()` - hides both Bluetooth connect options when false. */
+  wirelessEnabled: boolean;
 }
 
 /**
@@ -52,6 +54,7 @@ export function DevicePanel({
   clearDisabled,
   storeDisabledReason,
   infoAvailable,
+  wirelessEnabled,
 }: Props) {
   switch (status.phase) {
     case 'unsupported':
@@ -82,15 +85,17 @@ export function DevicePanel({
                 <RobotIcon size={15} /> Connect (via cable)
               </button>
             )}
-            {capabilities.bleAvailable && (
+            {wirelessEnabled && capabilities.bleAvailable && (
               <button type="button" className="btn btn--ghost" onClick={() => onConnect('ble')}>
                 Connect Bluetooth
               </button>
             )}
           </div>
-          <p className="hint-text" style={{ textAlign: 'left' }}>
-            Only driving the robot works wirelessly - uploading code to it needs the cable.
-          </p>
+          {wirelessEnabled && (
+            <p className="hint-text" style={{ textAlign: 'left' }}>
+              Only driving the robot works wirelessly - uploading code to it needs the cable.
+            </p>
+          )}
           {capabilities.usbAvailable && (
             <button
               type="button"
@@ -100,7 +105,7 @@ export function DevicePanel({
               Show all ports
             </button>
           )}
-          {capabilities.usbAvailable && (
+          {wirelessEnabled && capabilities.usbAvailable && (
             <button type="button" className="btn btn--sm btn--ghost" onClick={() => onConnect('bluetooth')}>
               My robot's Bluetooth module is older
             </button>

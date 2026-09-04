@@ -1227,6 +1227,46 @@ unverified until the bench test plan in that doc runs against a real module.
 `npm run typecheck`/`test` (445 passing)/`build` all pass; no simulator or USB-path file
 changed in kind.
 
+**First real-hardware finding, same round:** the very first attempt against a real
+"Bluetooth BLEV1.0" module returned a **completely empty chooser** - not just missing
+the robot. Cause: `requestBleDevice()`'s `filters: [{services: [uuid]}]` only matches a
+peripheral's *advertising payload*, not its GATT table, and this module apparently
+doesn't advertise a custom service UUID (a common shape for cheap BLE-UART bridges,
+which expect a central to connect blind and discover services afterward). Fixed by
+requesting `acceptAllDevices: true` instead - every nearby device now appears, and
+`optionalServices` (unaffected by the filter choice) still grants `openBleLink()` access
+to try all three candidate profiles once connected. Full writeup, including what would
+justify re-narrowing the chooser later: `docs/bluetooth-le-bridge.md`'s "First
+real-hardware finding" section. `tests/bluetoothLeTransport.test.ts` gained a regression
+test pinning the exact `requestDevice()` call shape. 447 tests passing.
+
+**Second real-hardware finding, same round - a managed Chrome profile with a per-site
+Bluetooth allowlist, not a blanket block.** With the module confirmed advertising (an
+independent iOS BLE scanner found it immediately, as `Makeblock_LE<hex>` - a real,
+evidence-based name for a future filter, per `docs/bluetooth-le-bridge.md`) and macOS's
+own Bluetooth permission for Chrome confirmed granted, the chooser still showed zero
+devices, and `chrome://bluetooth-internals` came back blocked by a Chrome Enterprise
+`URLBlocklist` policy - confirming a centrally managed school Chrome profile. The first
+hypothesis, a blanket `DefaultWebBluetoothGuardSetting = 2` deny, was then **ruled out**:
+on the same machine and Chrome profile, Makeblock's own `ide.mblock.cc` successfully
+opened a Web Bluetooth chooser and found the same module immediately - a global deny
+cannot allow one origin while blocking another. The better-fitting explanation is that
+IT has allowlisted Bluetooth specifically for `ide.mblock.cc` (to support the existing
+mBlock curriculum) and `mbot-vr.vercel.app` simply isn't on that allowlist yet - a
+one-line addition for IT, not a policy reversal, once confirmed. Full writeup and the
+exact ask for IT: `docs/bluetooth-le-bridge.md`'s "Second real-hardware finding" section.
+
+A follow-up in the same round complicated that theory further (the Workspace-level
+policy turned out to be unrestricted too, and Chrome's own per-site permissions page
+showed no Bluetooth row at all for `mbot-vr.vercel.app`, pointing at a possible
+*separate* Chrome Browser Cloud Management enrollment on that specific machine) without
+reaching a resolution. **Decision: hide both Bluetooth options from students rather than
+keep chasing an environment layer neither side can inspect directly.**
+`isWirelessFeatureEnabled()` (`src/device/featureFlag.ts`) now gates "Connect
+Bluetooth" and the older RFCOMM option, off by default; `?wireless=1` restores them for
+testing. No code was removed - see `docs/bluetooth-le-bridge.md`'s file-status note and
+its "Decision: stop chasing it, hide it instead" closing note.
+
 ### What is explicitly not built
 
 - **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now

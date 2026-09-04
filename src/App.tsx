@@ -51,7 +51,7 @@ const NEW_PROJECT_NAME = 'My mBot program';
 /** Matches the badge in Toolbar.tsx. Duplicated rather than imported from package.json
  *  so the build does not need a module outside src/ - see src/device/featureFlag.ts
  *  for the flag this version number is logged alongside. */
-const APP_VERSION = '1.3.2';
+const APP_VERSION = '1.3.3';
 
 /**
  * The physical-robot feature, loaded when `isHardwareFeatureEnabled()` allows it.

@@ -1,5 +1,18 @@
 # Release Summary
 
+## v1.3.3 — Bluetooth hidden from the hardware panel
+
+- Both Bluetooth connection options ("Connect Bluetooth" over Web Bluetooth, and the
+  older Bluetooth-classic/RFCOMM link) are now hidden by default. Real classroom
+  testing on a managed school Chrome profile never reached a working Bluetooth
+  connection despite several rounds of diagnosis (ruling out the module itself, macOS
+  permissions, and a blanket Chrome policy in turn) - see `docs/bluetooth-le-bridge.md`
+  for the full writeup and what's still an open question.
+- Nothing was removed. `isWirelessFeatureEnabled()` (`src/device/featureFlag.ts`) gates
+  the UI only; `?wireless=1` in the URL shows the buttons again for testing, `?wireless=0`
+  hides them again. The transport code, tests, and docs are untouched and functional.
+- Cable/USB connection is unaffected and remains the primary physical-robot path.
+
 ## v1.3.2 — Web Bluetooth (BLE) connection for BLE-only modules
 
 - Added `src/device/BluetoothLeTransport.ts`, a Web Bluetooth (GATT) transport that

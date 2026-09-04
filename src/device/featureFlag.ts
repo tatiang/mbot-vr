@@ -35,6 +35,45 @@ export function isHardwareFeatureEnabled(): boolean {
   }
 }
 
+const WIRELESS_STORAGE_KEY = 'mbotvr.wireless.enabled';
+const WIRELESS_QUERY_PARAM = 'wireless';
+
+/**
+ * Off by default (unlike `isHardwareFeatureEnabled` above) - hides both Bluetooth
+ * connect options ("Connect Bluetooth" / Web Bluetooth, and the older RFCOMM option)
+ * from the "My robot" panel, leaving the cable as the only physical-robot connection
+ * students see. Turned off 2026-09-04: real classroom testing hit a Bluetooth
+ * connection that never resolved cleanly (see `docs/bluetooth-le-bridge.md`'s
+ * real-hardware findings - likely a managed-Chrome policy layer specific to that
+ * deployment, not a bug in this code) and the maintainer asked for it hidden rather
+ * than the code removed, since the transport itself may simply need a different
+ * Chrome policy configuration, or work fine on a different fleet.
+ *
+ * Deliberately NOT gating whether the Bluetooth code is *downloaded* the way
+ * `isHardwareFeatureEnabled` gates the whole hardware layer - this only controls
+ * whether the buttons are shown, so re-enabling it for a future test is a URL
+ * parameter, not a redeploy. `?wireless=1` shows it (and persists that); `?wireless=0`
+ * hides it again explicitly. Same never-throws-on-storage-unavailable behavior as
+ * `isHardwareFeatureEnabled`.
+ */
+export function isWirelessFeatureEnabled(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get(WIRELESS_QUERY_PARAM);
+    if (fromQuery === '1' || fromQuery === 'true') {
+      localStorage.setItem(WIRELESS_STORAGE_KEY, '1');
+      return true;
+    }
+    if (fromQuery === '0' || fromQuery === 'false') {
+      localStorage.removeItem(WIRELESS_STORAGE_KEY);
+      return false;
+    }
+    return localStorage.getItem(WIRELESS_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 const DEBUG_QUERY_PARAM = 'debug';
 
 /**
