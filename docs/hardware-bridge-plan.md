@@ -1127,6 +1127,59 @@ matrix that has to pass before this is trusted. `npm run typecheck`, `npm run te
 `npm run build` pass locally (TypeScript/build unaffected - the sketch is not part of
 the app bundle).
 
+### Eighth round: first bench pass on the Player firmware — one real bug found and fixed, one likely false alarm
+
+First real-hardware attempt to flash and run `firmware/mbotvr-player/mbotvr-player.ino`
+(2026-09-03). Findings:
+
+- **Flashing failed with `avrdude`/`stk500_getsync` "not in sync"** against
+  `/dev/cu.usbserial-1120`; switching to the alternate device node for the same chip,
+  `/dev/cu.wchusbserial1120`, uploaded immediately. Root cause: macOS was exposing the
+  CH340 through two different drivers at once, each publishing its own port, and only
+  the WCH manufacturer driver's node reliably propagates the DTR toggle the mCore's
+  auto-reset circuit needs. This is a build-tooling gotcha, not a sketch bug — now
+  documented in `firmware/mbotvr-player/README.md`'s build steps.
+- **Connect and identify succeeded** after flashing: the app recognized the firmware as
+  `mBot VR Player v1` and enabled the storage controls, and the Stop ladder confirmed
+  correctly (a `VERSION` probe replies within the expected window). This proves the
+  `0xFF 0x55` framing and the Player command channel's basic request/reply path work on
+  real hardware.
+- **"Run on robot" produced no motor motion, and a stored program didn't appear to do
+  anything either.** Before treating this as a firmware bug, note that Stop confirming
+  does **not** prove motor actuation works — Stop's confirmation only depends on a
+  `VERSION` GET replying, and Stop's own motor commands are always speed-zero. A web
+  search cross-check independently confirmed this sketch's motor pin numbers
+  (M1 = D6 PWM/D7 DIR, M2 = D5 PWM/D4 DIR) against a public mCore writeup and
+  Makeblock's own mCore support page, so the pin map itself is now high-confidence, not
+  the likely cause. The much more likely explanation, not yet ruled out: the TB6612's
+  motor-supply rail is separate from the 5 V logic rail, and Makeblock's own
+  troubleshooting guide names exactly this failure mode ("mBot may not function
+  normally when not enough power is provided") — testing over USB alone, with the
+  battery pack off or flat, would produce exactly this symptom with no firmware bug at
+  all. Needs re-testing with the battery pack confirmed on before concluding otherwise.
+  Also note per §6/the design: storing a program with "Put this on my robot" does
+  **not** run it immediately by design — the VM only starts in `setup()`, so seeing no
+  effect right after a transfer is expected; the real test is after a power cycle.
+- **"Set both LEDs" not working was a real, confirmed firmware bug, now fixed.** The
+  original `ws2812Show()` was plain C with an `if`/`else` per bit; the compiler
+  tail-merged both branches' `*port = lo` write, which (verified by disassembling the
+  actual compiled sketch with `avr-objdump`, not by inspection alone) left only a
+  ~2-cycle/125 ns gap between a "0" bit's and a "1" bit's high time — almost certainly
+  too thin for a WS2812/SK6812 part to reliably tell apart, and a complete explanation
+  for "the LED block doesn't work." Rewritten as hand-counted inline assembly with an
+  11-cycle vs. 4-cycle high time (a 7-cycle/437.5 ns gap), and the fix was verified the
+  same way: disassembling the real compiled sketch again, not just eyeballing the
+  source. **Not yet re-tested against a real WS2812/SK6812 part or a scope** — the fix
+  is disassembly-verified, not hardware-verified.
+- Re-confirmed `npm run typecheck`/`test`/`build` unaffected (no TypeScript changed);
+  the sketch alone was re-compiled with `arduino-cli` (installed for this round) against
+  `arduino:avr:uno`, 9,368 bytes (29%) flash / 429 bytes (20%) RAM, no warnings from the
+  sketch itself.
+
+**Still open:** whether the fixed WS2812 timing actually works on a real chip; whether
+motors move once battery power is confirmed; ultrasonic/line-sensor reads; the 500 ms
+watchdog cable-pull latency; motor DIR polarity.
+
 ### What is explicitly not built
 
 - **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now

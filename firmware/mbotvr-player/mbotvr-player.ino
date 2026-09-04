@@ -201,31 +201,50 @@ static void vmDriveMotors(int16_t left, int16_t right) {
 }
 
 // --- WS2812 onboard LEDs (PB5 / D13) ------------------------------------------------
-// Minimal 800 kHz bit-bang for F_CPU = 16 MHz. Cycle counts are approximate and MUST
-// be checked on a scope against real WS2812/SK6812 parts -- this is the single least
-// certain thing in this file. GRB byte order.
+// 800 kHz bit-bang for F_CPU = 16 MHz, hand-written in assembly rather than C so the
+// compiler cannot re-merge or reorder the timing-critical instructions (an early C
+// version of this function let the compiler tail-merge the two branches' `*port = lo`
+// into one shared instruction, which left only a 2-cycle/125ns gap between a "0" bit's
+// and a "1" bit's high time -- almost certainly too thin for WS2812/SK6812 parts to
+// tell apart, and the likely cause of a real "LEDs don't respond" report on hardware).
+// This version was disassembled (avr-objdump) and hand-verified cycle-by-cycle:
+//   bit = 1: high 11 cycles (687.5 ns), then low 7 cycles before the next bit
+//   bit = 0: high  4 cycles (250 ns),   then low 13 cycles before the next bit
+// giving a 7-cycle/437.5 ns gap between the two high-time symbols (each bit's total
+// period is 21-22 cycles, ~1.31-1.375 us) -- still UNVERIFIED against a real WS2812/
+// SK6812 part or a scope, but now at least a deliberately-designed, checked encoding
+// rather than an accidental one. GRB byte order.
 static void ws2812Show() {
-  volatile uint8_t *port = &PORTB;
-  const uint8_t hi = *port | _BV(5);
-  const uint8_t lo = *port & ~_BV(5);
-  const uint8_t *p = g_pixels;
-  uint8_t n = sizeof(g_pixels);
+  const uint8_t *data = g_pixels;
+  uint16_t n = sizeof(g_pixels);
+  uint8_t curbyte, bitcnt;
   cli();
-  while (n--) {
-    uint8_t byte = *p++;
-    for (uint8_t bit = 8; bit; bit--) {
-      *port = hi;
-      if (byte & 0x80) {
-        __asm__ volatile("nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop\n");
-        *port = lo;
-      } else {
-        __asm__ volatile("nop\n nop\n nop\n");
-        *port = lo;
-      }
-      __asm__ volatile("nop\n nop\n nop\n nop\n nop\n");
-      byte <<= 1;
-    }
-  }
+  asm volatile(
+    "1: ld %[byte], %a[ptr]+          \n\t" // 2 cyc: next data byte, advance pointer
+    "   ldi %[bits], 8                \n\t" // 1 cyc: 8 bits per byte
+    "2: sbi %[port], %[pin]           \n\t" // 1 cyc: DATA -> HIGH
+    "   sbrc %[byte], 7               \n\t" // 1 cyc (bit=0) / 2 cyc (bit=1, skips next)
+    "   rjmp 3f                       \n\t" // 2 cyc, taken only for bit=0
+    // bit = 1: long high, then its own short low
+    "   nop \n\t nop \n\t nop \n\t nop \n\t"
+    "   nop \n\t nop \n\t nop \n\t nop \n\t"
+    "   cbi %[port], %[pin]           \n\t" // DATA -> LOW
+    "   nop \n\t nop \n\t nop \n\t nop \n\t"
+    "   rjmp 4f                       \n\t"
+    // bit = 0: short high (already done above), then its own long low
+    "3: cbi %[port], %[pin]           \n\t" // DATA -> LOW
+    "   nop \n\t nop \n\t nop \n\t nop \n\t"
+    "   nop \n\t nop \n\t nop \n\t nop \n\t"
+    "   nop \n\t nop \n\t nop \n\t nop \n\t"
+    "4: lsl %[byte]                   \n\t" // 1 cyc: shift next bit into position 7
+    "   dec %[bits]                   \n\t" // 1 cyc
+    "   brne 2b                       \n\t" // next bit
+    "   sbiw %A[n], 1                 \n\t" // 2 cyc: n--
+    "   brne 1b                       \n\t" // next byte
+    : [byte] "=&d" (curbyte), [bits] "=&d" (bitcnt), [ptr] "+e" (data), [n] "+w" (n)
+    : [port] "I" (_SFR_IO_ADDR(PORTB)), [pin] "I" (5)
+    : "memory"
+  );
   sei();
 }
 

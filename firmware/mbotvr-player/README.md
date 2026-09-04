@@ -11,20 +11,24 @@ with mBot VR's Tier-1 tethered live control.
 
 ---
 
-## ⚠️ UNVERIFIED — not yet tested on a real mBot
+## ⚠️ UNVERIFIED — bench testing in progress
 
-Nothing in this firmware has run on physical hardware. Transcribed from public
-references and **must be bench-checked before any classroom use**:
+Bench testing started 2026-09-03. Findings so far are logged in
+`docs/hardware-bridge-plan.md`'s "Implementation status" section, per-round, the same
+way the Tier-1 rounds were. Open items:
 
-| Thing | Risk if wrong | How to check |
-| --- | --- | --- |
-| mCore pin map (motor PWM/DIR, buzzer, RGB, RJ25 port pins) | Robot does nothing, or the wrong thing | Cross-check against the mCore schematic and a known-good mBlock-generated sketch; drive one actuator at a time |
-| Motor DIR polarity | Wheels spin backwards | "move forward" block on a Player-flashed robot; compare to the tethered path (already fixed there) |
-| WS2812 bit-bang timing (`ws2812Show`) | LEDs wrong colour / flicker / dark | Scope the D13 waveform; set a solid colour and eyeball |
-| Ultrasonic pulse + `pulseIn` timing | Distance always 0 or nonsense | Hold a hand at 10/20/40 cm, read `INFO` / a live GET |
-| Line sensor active level (`INPUT_PULLUP`, LOW = on line) | `left/right on line?` inverted | Put the robot on and off dark tape |
-| Boot auto-reset window | First probe after flashing may miss | The app already waits 2 s post-open; confirm that's enough |
-| Watchdog 500 ms cable-pull halt (plan U1-adjacent) | A robot keeps driving after a cable pull | Drive tethered, yank the USB cable, film at 60 fps |
+| Thing | Risk if wrong | How to check | Status |
+| --- | --- | --- | --- |
+| mCore pin map (M1 = D6 PWM/D7 DIR, M2 = D5 PWM/D4 DIR, buzzer D8, RGB D13) | Robot does nothing, or the wrong thing | Cross-checked against an independent public source (mCore blog writeup + Makeblock's own mCore support page) — see sources below | High confidence; pin *numbers* match |
+| Motors don't move at all | Looks like a firmware bug, isn't one | **Check battery power first.** The TB6612's motor-supply rail (VM) is separate from the 5 V logic rail (VCC) — USB alone powers the MCU and logic fine but **not the motors**. Makeblock's own troubleshooting guide flags exactly this ("mBot may not function normally when not enough power is provided"). Confirm the battery pack is installed, switched on, and has charge before treating "no motion" as a code bug. | Common false alarm — check this before debugging pins/PWM |
+| Motor DIR polarity | Wheels spin backwards | "move forward" block on a Player-flashed robot; compare to the tethered path (already fixed there) | Unverified |
+| WS2812 onboard LED bit-bang timing (`ws2812Show()`) | LEDs dark, wrong colour, or flicker | Scope the D13 waveform | **Real bug found and fixed 2026-09-03** (not yet re-tested on hardware). The original C `if/else` let the compiler tail-merge both branches' `*port = lo`, leaving only a ~2-cycle/125 ns gap between a "0" bit's and a "1" bit's high time — confirmed by disassembling the compiled sketch (`avr-objdump`), and almost certainly too thin for a WS2812/SK6812 part to read reliably; matches the "set both LEDs doesn't work" report exactly. Rewritten as hand-counted inline assembly (11-cycle vs 4-cycle high time, a 7-cycle/437.5 ns gap) and re-verified by disassembling the actual compiled sketch again. Retest on the bench before trusting it. |
+| Ultrasonic pulse + `pulseIn` timing | Distance always 0 or nonsense | Hold a hand at 10/20/40 cm, read `INFO` / a live GET | Not yet tested |
+| Line sensor active level (`INPUT_PULLUP`, LOW = on line) | `left/right on line?` inverted | Put the robot on and off dark tape | Not yet tested |
+| Boot auto-reset window | First probe after flashing may miss | The app already waits 2 s post-open; confirm that's enough | Connect succeeded at 2 s in initial testing |
+| Watchdog 500 ms cable-pull halt (plan U1-adjacent) | A robot keeps driving after a cable pull | Drive tethered, yank the USB cable, film at 60 fps | Not yet tested |
+
+**Pin-map sources:** [mCore support page](https://support.makeblock.com/hc/en-us/articles/4412894402967-mCore-Main-Control-Board-of-mBot) (buzzer D8, RGB D13, motor pins) and a third-party mCore teardown/writeup independently listing M1 = D6 (PWM) / D7 (DIR) and M2 = D5 (PWM) / D4 (DIR), matching this sketch. Neither is Makeblock source code — hardware pin numbers are facts, not copied expression (see the licensing note below).
 
 Record findings in `docs/hardware-bridge-plan.md`'s "Implementation status" section, in
 the same per-round format used for the Tier-1 rounds.
@@ -39,6 +43,13 @@ No external libraries. Standard AVR core only (`Arduino.h`, `EEPROM.h`, `avr/int
 
 1. Board: **Arduino Uno** (Tools → Board). The mCore is Uno-compatible (ATmega328P, 16 MHz).
 2. Port: the robot's CH340 serial port (USB only — mBot v1 cannot be flashed over Bluetooth).
+   **On macOS, the same CH340 chip often shows up twice** — a `/dev/cu.usbserial-XXXX`
+   entry from macOS's own generic USB-serial driver, and a `/dev/cu.wchusbserialXXXX`
+   entry from the WCH (manufacturer) driver. Only the `wchusbserial` one reliably
+   toggles DTR the way the mCore's auto-reset circuit needs; the generic one commonly
+   fails with an `avrdude`/`stk500_getsync` "not in sync" error even though it looks
+   like a valid port. If upload fails with a sync error, try the other entry with the
+   same trailing digits before anything else.
 3. Open `mbotvr-player.ino`, **Upload**.
 
 ### arduino-cli
