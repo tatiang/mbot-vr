@@ -141,29 +141,29 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
       return;
     }
     if (hasBlockingIssue(storeIssues)) {
-      pushToast('error', 'Fix the blocked items below before putting this program on the robot.');
+      pushToast('error', 'Fix the blocked items below before uploading this to the robot.');
       return;
     }
 
     try {
       const compiled = compileWorkspace(workspace, { highlight: false });
       if (!compiled.hasStart) {
-        pushToast('info', 'Add a "when program starts" block before putting this on your robot.');
+        pushToast('info', 'Add a "when program starts" block before uploading to your robot.');
         return;
       }
       if (compiled.attachedBlocks === 0) {
-        pushToast('info', 'Drag some blocks underneath "when program starts", then put it on your robot.');
+        pushToast('info', 'Drag some blocks underneath "when program starts", then upload to your robot.');
         return;
       }
       const program = compileWorkspaceToPlayerBytecode(workspace);
       await session.writeStoredProgram(program.bytes, program.checksum);
-      pushToast('success', 'Program is on your robot.');
+      pushToast('success', 'Code uploaded to your robot.');
     } catch (error) {
       diagnosticLog.logError('Stored program transfer failed', error);
       const message =
         error instanceof BytecodeCompileError
           ? error.message
-          : 'Program did not make it onto the robot. Run it with the cable instead.';
+          : "Code didn't make it onto the robot. Run it with the cable instead.";
       pushToast('error', message);
     }
   }, [controller, diagnosticLog, getWorkspace, pushToast, storeIssues]);
@@ -172,17 +172,17 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
     const session = controller.getSession();
     if (!session) return;
     if (!session.getProfile().supportsOnRobotPrograms) {
-      pushToast('error', 'This robot needs mBot VR Player firmware before stored programs can be cleared.');
+      pushToast('error', "This robot needs mBot VR Player firmware before its code can be cleared.");
       return;
     }
-    if (!window.confirm("Clear the program stored on this robot? It will stay idle after it restarts.")) return;
+    if (!window.confirm("Clear the code stored on this robot? It will stay idle after it restarts.")) return;
 
     try {
       await session.clearStoredProgram();
-      pushToast('success', "Robot program cleared. It will stay idle after it restarts.");
+      pushToast('success', "Robot's code cleared. It will stay idle after it restarts.");
     } catch (error) {
       diagnosticLog.logError('Stored program clear failed', error);
-      pushToast('error', "The robot's stored program was not cleared. Keep it connected and try again.");
+      pushToast('error', "The robot's code was not cleared. Keep it connected and try again.");
     }
   }, [controller, diagnosticLog, pushToast]);
 
@@ -200,7 +200,7 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
       pushToast('info', describePlayerInfo(info));
     } catch (error) {
       diagnosticLog.logError('Player INFO request failed', error);
-      pushToast('error', "Couldn't check what's stored on the robot. Keep it connected and try again.");
+      pushToast('error', "Couldn't check the robot's code. Keep it connected and try again.");
     }
   }, [controller, diagnosticLog, pushToast]);
 
@@ -219,11 +219,11 @@ export function DeviceSection({ getWorkspace, onHighlight, pushToast, diagnostic
   const storeDisabledReason =
     connected && controller.status.phase !== 'stopUnconfirmed' && controller.status.phase !== 'stopping'
       ? connectedLink === 'bluetooth'
-        ? 'Putting a program on the robot needs the cable. Wireless can only drive it live.'
+        ? 'Uploading code to the robot needs the cable. Wireless can only drive it live.'
         : !connectedProfile?.supportsOnRobotPrograms
-          ? 'On-robot programs need mBot VR Player firmware. Use Run on robot for tethered control.'
+          ? 'On-robot code needs mBot VR Player firmware. Use Run on robot for tethered control.'
           : hasBlockingIssue(storeIssues)
-            ? 'Fix the blocked items below before putting this program on the robot.'
+            ? 'Fix the blocked items below before uploading this to the robot.'
             : undefined
       : undefined;
   const stopState = controller.status.phase === 'stopping' || controller.status.phase === 'stopUnconfirmed';
