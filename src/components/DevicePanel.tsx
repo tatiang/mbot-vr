@@ -78,7 +78,7 @@ export function DevicePanel({
           )}
           <div className="device-panel__choices">
             <button type="button" className="btn" onClick={() => onConnect('usb')}>
-              <RobotIcon size={15} /> Plugged in with a cable
+              <RobotIcon size={15} /> Connect (via cable)
             </button>
             <button type="button" className="btn btn--ghost" onClick={() => onConnect('bluetooth')}>
               Wireless (Bluetooth)
@@ -177,7 +177,7 @@ export function DevicePanel({
             </button>
           )}
           <button type="button" className="btn btn--sm btn--ghost" onClick={onDisconnect} disabled={running}>
-            Done with my robot
+            Disconnect my robot
           </button>
         </div>
       );

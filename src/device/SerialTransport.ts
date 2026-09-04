@@ -14,7 +14,7 @@ const SPP_SERVICE_CLASS_ID = '00001101-0000-1000-8000-00805f9b34fb';
  * USB vendor id for WCH (Nanjing Qinheng Microelectronics), maker of the CH340/CH341
  * chip the mCore board uses for its USB-serial bridge (see
  * `docs/hardware-bridge-plan.md` §3, source 1-2). Passed as a `filters` entry when a
- * student chooses "Plugged in with a cable", so Chrome's port chooser shows only
+ * student chooses "Connect (via cable)", so Chrome's port chooser shows only
  * WCH-made adapters instead of every serial-capable device the OS knows about - on a
  * real machine that list can include Bluetooth-paired earbuds, a debug console, and
  * other USB-serial gadgets with no relation to the robot, which is exactly what caused
