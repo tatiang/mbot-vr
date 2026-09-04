@@ -354,4 +354,32 @@ describe('DeviceSession Player firmware storage', () => {
       code: 'ERR_FIRMWARE_UNKNOWN',
     });
   });
+
+  it('getPlayerInfoRaw returns the firmware INFO string, correlated by index', async () => {
+    const fake = createFakeLink();
+    fake.onWrite((bytes) => {
+      const index = bytes[3];
+      const deviceId = bytes[5];
+      if (deviceId === DeviceId.VERSION) {
+        fake.emit(encodeStringReply(index, 'mBot VR Player 0.1.0'));
+      } else if (deviceId === DeviceId.PLAYER && bytes[6] === PlayerCommand.INFO) {
+        fake.emit(encodeStringReply(index, 'MBVR player=1 idle=0 prog=1 plen=42 crc=1234'));
+      }
+    });
+    const session = new DeviceSession(fake.link, 'usb');
+    await session.identify();
+    session.confirmIdentity();
+
+    await expect(session.getPlayerInfoRaw()).resolves.toBe('MBVR player=1 idle=0 prog=1 plen=42 crc=1234');
+  });
+
+  it('getPlayerInfoRaw rejects on factory firmware, like the other Player calls', async () => {
+    const fake = createFakeLink();
+    autoRespond(fake, '06.01.009');
+    const session = new DeviceSession(fake.link, 'usb');
+    await session.identify();
+    session.confirmIdentity();
+
+    await expect(session.getPlayerInfoRaw()).rejects.toMatchObject({ code: 'ERR_FIRMWARE_UNKNOWN' });
+  });
 });

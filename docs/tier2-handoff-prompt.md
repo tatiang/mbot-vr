@@ -148,9 +148,11 @@ hardware**:
   bytecode validator (jump-target boundaries, stack-balance across branches, END
   terminator) run over every starter and negative cases.
 
-Still to do: the STK500v1 flashing path (`src/device/flash/`), surfacing `INFO` in the
-UI, the bench-check matrix in `firmware/mbotvr-player/README.md`, and the
-`READ_TIMER_DSEC` unit mismatch noted in `player-protocol.md` §4.
+Still to do: the STK500v1 flashing path (`src/device/flash/`), the bench-check matrix in
+`firmware/mbotvr-player/README.md`, and the `READ_TIMER_DSEC` unit mismatch noted in
+`player-protocol.md` §4. `INFO` is now wired into the UI ("What's on my robot?" in
+`DevicePanel.tsx`) as of the first real bench round - see hardware-bridge-plan.md's
+"Eighth round".
 
 ## A smaller, separate item worth doing first or alongside
 

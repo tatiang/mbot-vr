@@ -14,12 +14,15 @@ interface Props {
   onStop: () => void;
   onStoreProgram: () => void;
   onClearStoredProgram: () => void;
+  onCheckRobotInfo: () => void;
   running: boolean;
   runDisabled: boolean;
   runDisabledReason?: string;
   storeDisabled: boolean;
   clearDisabled: boolean;
   storeDisabledReason?: string;
+  /** Whether the connected firmware supports Player's `INFO` query at all. */
+  infoAvailable: boolean;
 }
 
 /**
@@ -41,12 +44,14 @@ export function DevicePanel({
   onStop,
   onStoreProgram,
   onClearStoredProgram,
+  onCheckRobotInfo,
   running,
   runDisabled,
   runDisabledReason,
   storeDisabled,
   clearDisabled,
   storeDisabledReason,
+  infoAvailable,
 }: Props) {
   switch (status.phase) {
     case 'unsupported':
@@ -161,6 +166,16 @@ export function DevicePanel({
           )}
           {status.phase === 'verifying' && <p className="device-panel__status">Checking the program on the robot…</p>}
           {storeDisabledReason && <p className="hint-text" style={{ textAlign: 'left' }}>{storeDisabledReason}</p>}
+          {infoAvailable && (
+            <button
+              type="button"
+              className="btn btn--sm btn--ghost"
+              onClick={onCheckRobotInfo}
+              disabled={running || clearDisabled}
+            >
+              What's on my robot?
+            </button>
+          )}
           <button type="button" className="btn btn--sm btn--ghost" onClick={onDisconnect} disabled={running}>
             Done with my robot
           </button>

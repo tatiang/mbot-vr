@@ -1180,6 +1180,18 @@ First real-hardware attempt to flash and run `firmware/mbotvr-player/mbotvr-play
 motors move once battery power is confirmed; ultrasonic/line-sensor reads; the 500 ms
 watchdog cable-pull latency; motor DIR polarity.
 
+A follow-up report from the same bench session: a program stored with "Put this on my
+robot," followed by a power cycle, still showed no observable effect. Rather than guess
+a third time, `INFO` (`PlayerCommand.INFO`) - reserved by PR #1 but never called from the
+app - is now wired up: `DeviceSession.getPlayerInfoRaw()`, parsed by the new
+`src/device/playerInfo.ts`, surfaced as a **"What's on my robot?"** button next to the
+storage controls. It reports, in plain language, whether a program is actually stored,
+its size, and whether boot-idle is set - so the next round can see directly whether the
+storage/boot logic is at fault versus the already-flagged battery/LED issues producing a
+"nothing happened" that looks the same from the outside. `tests/playerInfo.test.ts`
+covers the wire-format parser; `tests/deviceSession.test.ts` covers the request/reply
+plumbing against a fake link. Not yet exercised against real firmware.
+
 ### What is explicitly not built
 
 - **The flash-once workflow (STK500v1 over Web Serial).** The Player firmware sketch now

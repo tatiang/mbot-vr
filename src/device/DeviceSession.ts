@@ -332,6 +332,19 @@ export class DeviceSession {
     this.setStatus({ phase: 'ready', link: this.linkKind, profile: this.profile });
   }
 
+  /**
+   * The raw `INFO` reply - what the firmware actually has stored right now (boot-idle
+   * flag, whether a valid program is present, its length and checksum). Read-only, so
+   * unlike the other Player calls it does not touch `status`. See `playerInfo.ts` for
+   * parsing this into something classroom-language and `docs/player-protocol.md` §2.1
+   * for the wire format.
+   */
+  async getPlayerInfoRaw(): Promise<string> {
+    this.requirePlayerFirmware();
+    const payload = await this.requestPlayer(PlayerCommand.INFO, [], READ_TIMEOUT_MS * 3, 'ERR_NO_REPLY');
+    return decodeString(payload);
+  }
+
   // --- stop escalation primitives (see StopController.ts) ----------------------------
 
   /** A cheap, side-effect-free GET used as a liveness check. Never throws; returns false on timeout. */
