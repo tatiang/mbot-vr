@@ -118,13 +118,83 @@ same way every other protocol fact in this app graduates from "sourced" to "conf
 
 ## First smoke test already run (software only)
 
-Clicking the real "Connect Bluetooth" button in a real Chromium browser (no mock) during
-this work: `navigator.bluetooth.requestDevice()` genuinely opened, no BLE hardware was
-available to select, the browser reported `NotFoundError`, and the app correctly
-classified it as `ERR_NO_PORT_SELECTED` and returned to a clean, retryable
-`disconnected` state - visible end-to-end in the Diagnostics log with no unhandled
-exception. That confirms the browser-facing half of the stack; it says nothing yet about
-talking to a real module.
+Clicking the real "Connect Bluetooth" button in a real Chromium browser (no mock)
+before any real hardware was involved: `navigator.bluetooth.requestDevice()` genuinely
+opened, no BLE hardware was available to select, the browser reported `NotFoundError`,
+and the app correctly classified it as `ERR_NO_PORT_SELECTED` and returned to a clean,
+retryable `disconnected` state - visible end-to-end in the Diagnostics log with no
+unhandled exception. That confirmed the browser-facing half of the stack; it said
+nothing yet about talking to a real module.
+
+## First real-hardware finding: the chooser was empty, and the fix
+
+The very first attempt against a real "Bluetooth BLEV1.0" module surfaced a genuine bug,
+not a "device not paired yet" situation: the Bluetooth chooser opened but listed **no
+devices at all**, not even an unrelated one. `requestBleDevice()`'s original
+`filters: [{ services: [uuid] }, ...]` (one entry per candidate profile in
+`CANDIDATE_PROFILES`) was the cause. `filters: [{services}]` only matches a peripheral's
+**advertising/scan-response payload** - it has nothing to do with what GATT services a
+device exposes once connected. Plenty of cheap or rebranded BLE-UART bridges (this
+module plausibly among them) advertise only a device name and expect a central to
+connect blind, discovering services afterward via GATT - Web Bluetooth's `filters`
+option has no way to express "match on anything, then check services after connecting."
+
+Fixed by requesting `acceptAllDevices: true` instead of any filter - every nearby BLE
+device now appears (a classroom's phones and earbuds included; picking the right one is
+on the student, same as the existing unfiltered "Show all ports" USB fallback already
+asks of them). `optionalServices` is untouched and still lists every candidate profile's
+service UUID, so `openBleLink()`'s post-connect `getPrimaryService()` walk over
+`CANDIDATE_PROFILES` works exactly as designed regardless of how the device was found.
+See the comments on `requestBleDevice()` and at the top of
+`BluetoothLeTransport.ts` for the full reasoning, and
+`tests/bluetoothLeTransport.test.ts`'s "chooser scope" tests for the regression test
+that pins this (`acceptAllDevices: true`, no `filters`, `optionalServices` unchanged).
+
+**Determined, same round:** a real BLEV1.0 module scanned with a third-party BLE
+inspector (LightBlue, on iOS - independent of this app and of Chrome entirely) advertises
+as **`Makeblock_LE<hex>`** (e.g. `Makeblock_LE10a56214b733`), confirming the `Makeblock_LE`
+name found in research and giving `requestBleDevice()` a real, evidence-based filter to
+re-narrow to later (`filters: [{ namePrefix: 'Makeblock_LE' }]`) once a connection has
+actually been proven to work with `acceptAllDevices: true` first. Not yet re-narrowed -
+no successful connection has happened yet to build that confidence on (see below).
+
+## Second real-hardware finding: a managed Chrome profile, but a per-site allowlist - not a blanket block
+
+With the module confirmed advertising (LightBlue found it immediately) and macOS's
+per-app Bluetooth permission confirmed granted to Chrome (System Settings > Privacy &
+Security > Bluetooth), the "Connect Bluetooth" chooser still showed **zero devices** -
+not even unrelated nearby ones, which `acceptAllDevices: true` should surface
+regardless of relevance. `chrome://bluetooth-internals/#adapter` came back
+**"This page is blocked - Your organization doesn't allow you to view this site,"**
+confirming a centrally managed Chrome profile (Google Workspace for Education / Chrome
+Browser Cloud Management).
+
+The first hypothesis - a blanket `DefaultWebBluetoothGuardSetting = 2` ("deny") applied
+to every site - is **ruled out**, not just unconfirmed: on the same machine, same
+Chrome profile, `ide.mblock.cc` (Makeblock's own official web IDE) successfully opened
+a Web Bluetooth chooser that listed `Makeblock_LE10a56214b733` immediately. A blanket
+deny is a single global setting with no per-site exception in Chrome's model for that
+specific policy - it cannot allow one origin while blocking another. Something else
+must be origin-specific.
+
+The much better-fitting explanation: the school's Chrome management has **allowlisted
+Bluetooth access for `ide.mblock.cc` specifically** (to support their existing mBlock
+curriculum) rather than denying Bluetooth outright, and `mbot-vr.vercel.app` simply
+isn't on that allowlist yet. Chrome Enterprise supports several mechanisms capable of
+this shape (a per-origin content-setting override policy, or a site permission granted
+through a managed configuration) - which exact one is in play is IT's to say, not
+something confirmable from the browser side. The actionable ask is simple regardless of
+the underlying mechanism:
+
+> **Please give `https://mbot-vr.vercel.app` the same Bluetooth device permission
+> `ide.mblock.cc` already has on this Chrome profile.**
+
+This is a materially better outcome than the first hypothesis: it means Bluetooth
+access for student machines is not locked down entirely, IT has already set up the
+exact kind of permission this app needs (for a different site), and this is a one-line
+allowlist addition rather than a policy reversal. **Still not yet confirmed** - this
+needs an answer from IT either way, since the exact policy name and how their MDM is
+configured isn't visible from here.
 
 ## Physical-hardware test plan
 
