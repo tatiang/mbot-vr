@@ -46,9 +46,9 @@ export function parsePlayerInfo(raw: string): PlayerInfo | null {
 
 /** A classroom-language summary of what's actually stored on the robot right now. */
 export function describePlayerInfo(info: PlayerInfo): string {
-  if (!info.hasProgram) return "No program is stored on this robot yet.";
+  if (!info.hasProgram) return "No code is stored on this robot yet.";
   if (info.idle) {
-    return `A ${info.programBytes}-byte program is stored, but it's set not to run at startup - clear it or put a new one on to change that.`;
+    return `There's code stored (${info.programBytes} bytes), but it won't run at startup - clear it or upload new code to change that.`;
   }
-  return `A ${info.programBytes}-byte program is stored and will run the next time the robot powers on.`;
+  return `There's code stored (${info.programBytes} bytes) and it'll run the next time the robot powers on.`;
 }

@@ -54,19 +54,19 @@ describe('parsePlayerInfo', () => {
 describe('describePlayerInfo', () => {
   it('says nothing is stored', () => {
     expect(describePlayerInfo({ idle: false, hasProgram: false, programBytes: 0, checksum: 0 })).toMatch(
-      /no program is stored/i,
+      /no code is stored/i,
     );
   });
 
-  it('says a stored program is set to run', () => {
+  it('says stored code is set to run', () => {
     const text = describePlayerInfo({ idle: false, hasProgram: true, programBytes: 50, checksum: 1 });
-    expect(text).toMatch(/50-byte program/);
-    expect(text).toMatch(/will run/i);
+    expect(text).toMatch(/50 bytes/);
+    expect(text).toMatch(/run the next time/i);
   });
 
-  it('says a stored program will not run because boot-idle is set', () => {
+  it('says stored code will not run because boot-idle is set', () => {
     const text = describePlayerInfo({ idle: true, hasProgram: true, programBytes: 50, checksum: 1 });
-    expect(text).toMatch(/50-byte program/);
-    expect(text).toMatch(/set not to run/i);
+    expect(text).toMatch(/50 bytes/);
+    expect(text).toMatch(/won't run/i);
   });
 });

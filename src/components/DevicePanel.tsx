@@ -78,21 +78,21 @@ export function DevicePanel({
           )}
           <div className="device-panel__choices">
             <button type="button" className="btn" onClick={() => onConnect('usb')}>
-              <RobotIcon size={15} /> Plugged in with a cable
+              <RobotIcon size={15} /> Connect (via cable)
             </button>
             <button type="button" className="btn btn--ghost" onClick={() => onConnect('bluetooth')}>
-              Wireless (Bluetooth)
+              Connect (via Bluetooth)
             </button>
           </div>
           <p className="hint-text" style={{ textAlign: 'left' }}>
-            Only driving the robot works wirelessly - putting a program on it needs the cable.
+            Only driving the robot works wirelessly - uploading code to it needs the cable.
           </p>
           <button
             type="button"
             className="btn btn--sm btn--ghost"
             onClick={() => onConnect('usb', { showAllPorts: true })}
           >
-            My robot isn't listed - show every port
+            Show all ports
           </button>
         </div>
       );
@@ -109,7 +109,8 @@ export function DevicePanel({
     case 'confirmingIdentity':
       return (
         <div className="device-panel">
-          <p className="device-panel__question">Did the robot in front of you just flash and beep?</p>
+          <p className="device-panel__question">Confirm robot connected</p>
+          <p className="hint-text" style={{ textAlign: 'left' }}>It should have flashed and beeped just now.</p>
           <div className="device-panel__choices">
             <button type="button" className="btn btn--primary" onClick={onConfirmIdentity}>
               Yes, that's mine
@@ -153,10 +154,10 @@ export function DevicePanel({
           {runDisabled && runDisabledReason && <p className="hint-text" style={{ textAlign: 'left' }}>{runDisabledReason}</p>}
           <div className="device-panel__storage">
             <button type="button" className="btn btn--primary" onClick={onStoreProgram} disabled={storeDisabled}>
-              Put this on my robot
+              Upload to my robot
             </button>
             <button type="button" className="btn btn--ghost" onClick={onClearStoredProgram} disabled={clearDisabled}>
-              Clear my robot's program
+              Clear robot's code
             </button>
           </div>
           {status.phase === 'sending' && (
@@ -173,11 +174,11 @@ export function DevicePanel({
               onClick={onCheckRobotInfo}
               disabled={running || clearDisabled}
             >
-              What's on my robot?
+              Check robot's code
             </button>
           )}
           <button type="button" className="btn btn--sm btn--ghost" onClick={onDisconnect} disabled={running}>
-            Done with my robot
+            Disconnect my robot
           </button>
         </div>
       );

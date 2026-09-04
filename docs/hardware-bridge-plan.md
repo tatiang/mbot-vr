@@ -1042,7 +1042,7 @@ yet.
   the ATmega328P's 1 KB EEPROM for the halt flag, nickname/profile data, versioning, and
   future metadata.
 - **On-robot preflight** (`src/device/preflight.ts`) - the existing hardware
-  compatibility pass gained an opt-in stricter mode for "Put this on my robot." Tethered
+  compatibility pass gained an opt-in stricter mode for "Upload to my robot." Tethered
   running is unchanged, but persistent storage now blocks unsupported bytecode constructs
   and oversized programs before any serial bytes are sent. This is the real EEPROM-size
   preflight the plan called non-optional.
@@ -1054,7 +1054,7 @@ yet.
   verification succeeds. Factory firmware remains unaffected and is detected as not
   supporting stored programs.
 - **UI** (`src/components/DevicePanel.tsx`, `src/components/DeviceSection.tsx`) - a
-  connected Player robot gets separate **Run on robot**, **Put this on my robot**, and
+  connected Player robot gets separate **Run on robot**, **Upload to my robot**, and
   **Clear my robot's program** controls. Storage is disabled over Bluetooth, on factory
   firmware, while a tethered run is active, and whenever preflight has a blocking issue.
   Clearing the stored program is independent of the current workspace's validity because
@@ -1157,7 +1157,7 @@ First real-hardware attempt to flash and run `firmware/mbotvr-player/mbotvr-play
   normally when not enough power is provided") — testing over USB alone, with the
   battery pack off or flat, would produce exactly this symptom with no firmware bug at
   all. Needs re-testing with the battery pack confirmed on before concluding otherwise.
-  Also note per §6/the design: storing a program with "Put this on my robot" does
+  Also note per §6/the design: storing a program with "Upload to my robot" does
   **not** run it immediately by design — the VM only starts in `setup()`, so seeing no
   effect right after a transfer is expected; the real test is after a power cycle.
 - **"Set both LEDs" not working was a real, confirmed firmware bug, now fixed.** The
